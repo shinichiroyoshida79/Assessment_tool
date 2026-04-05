@@ -1,0 +1,1974 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ケアマネ支援ツール</title>
+<!-- html2canvas for PNG, jsPDF for PDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+:root{
+  --bg:#f4f2ee;--sur:#fff;--sur2:#ece9e3;
+  --bd:#d5cfca;--bd2:#b8b2ab;
+  --tx:#272420;--tx2:#645f5a;--tx3:#9c9590;
+  --grn:#1a7a56;--grn-l:#e3f5ed;
+  --blu:#1555a0;--blu-l:#e3eef8;
+  --red:#b02828;--red-l:#fbe8e8;
+  --pur:#4e38a0;--pur-l:#eeebfa;
+  --amb:#b87010;--amb-l:#fdf0dc;
+  --org:#c05018;--org-l:#fdeee6;
+}
+
+/* ════ タブ切り替え ════ */
+#tab-bar{display:flex;background:#fff;border-bottom:2px solid var(--bd);z-index:30;flex-shrink:0}
+.tab-btn{flex:1;padding:9px 4px;font-size:13px;font-weight:600;font-family:inherit;border:none;background:none;color:var(--tx2);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;transition:color .15s}
+.tab-btn.on{color:var(--blu);border-bottom-color:var(--blu)}
+
+/* ════ ページ表示切り替え ════ */
+.page{display:none;flex:1;flex-direction:column;overflow:hidden}
+.page.on{display:flex}
+
+/* ════ 住宅見取り図 ════ */
+#fp-wrap{flex:1;position:relative;overflow:auto;
+  background:#e8e4de;
+  background-image:
+    linear-gradient(rgba(180,170,160,.4) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(180,170,160,.4) 1px, transparent 1px),
+    linear-gradient(rgba(180,170,160,.15) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(180,170,160,.15) 1px, transparent 1px);
+  background-size:100px 100px,100px 100px,20px 20px,20px 20px;
+}
+#fp-cv{display:block;cursor:crosshair}
+#fp-toolbar{background:var(--sur);border-bottom:1px solid var(--bd);padding:5px 8px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;z-index:10}
+#fp-toolbar button{font-size:11px;padding:4px 7px;border:1px solid var(--bd2);border-radius:4px;background:var(--sur);color:var(--tx);cursor:pointer;white-space:nowrap}
+#fp-toolbar button:hover{background:var(--sur2)}
+#fp-toolbar button.on{background:var(--blu-l);color:var(--blu);border-color:var(--blu);font-weight:700}
+#fp-toolbar .tsep{width:1px;height:18px;background:var(--bd);margin:0 2px;flex-shrink:0}
+#fp-toolbar .tlbl{font-size:10px;color:var(--tx3);white-space:nowrap}
+/* 浮き移動ボタン（見取り図側） */
+
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:var(--tx);height:100vh;overflow:hidden;display:flex;flex-direction:column;user-select:none}
+
+/* ── Header ── */
+#hdr{background:var(--sur);border-bottom:1px solid var(--bd);padding:6px 12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;box-shadow:0 1px 3px rgba(0,0,0,.06);z-index:20}
+#hdr h1{font-size:13px;font-weight:700;margin-right:4px;white-space:nowrap}
+.sep{width:1px;height:20px;background:var(--bd);margin:0 1px;flex-shrink:0}
+.grp{display:flex;gap:3px;align-items:center;flex-wrap:wrap}
+.glbl{font-size:10px;color:var(--tx3);margin-right:1px;white-space:nowrap}
+button{font-family:inherit;font-size:11px;padding:4px 8px;border:1px solid var(--bd2);border-radius:4px;background:var(--sur);color:var(--tx);cursor:pointer;white-space:nowrap;transition:background .1s}
+button:hover{background:var(--sur2)}
+button.active{font-weight:700}
+button:disabled{opacity:.35;cursor:default}
+button.ga{border-color:var(--grn);color:var(--grn)}     button.ga:hover,button.ga.active{background:var(--grn-l)}
+button.gl{border-color:var(--pur);color:var(--pur)}     button.gl:hover,button.gl.active{background:var(--pur-l)}
+button.ge{border-color:var(--org);color:var(--org)}     button.ge:hover,button.ge.active{background:var(--org-l)}
+button.gk{border-color:var(--amb);color:var(--amb)}     button.gk:hover,button.gk.active{background:var(--amb-l)}
+button.gs{border-color:var(--blu);color:var(--blu)}     button.gs:hover,button.gs.active{background:var(--blu-l)}
+button.gd{border-color:var(--red);color:var(--red)}     button.gd:hover{background:var(--red-l)}
+button.gn{border-color:var(--bd2);color:var(--tx2)}
+
+/* ── 浮き「移動」ボタン ── */
+#float-sel{
+  position:fixed;
+  top:56px; left:10px;
+  z-index:200;
+  background:var(--blu);
+  color:#fff;
+  border:none;
+  border-radius:50px;
+  padding:8px 18px;
+  font-size:13px;
+  font-weight:700;
+  font-family:inherit;
+  box-shadow:0 2px 8px rgba(0,0,0,.22);
+  cursor:pointer;
+  transition:background .15s, transform .1s;
+}
+#float-sel:active{transform:scale(.95)}
+#float-sel.active{background:#0e3f78}
+
+/* ── 感情折りたたみ ── */
+#emo-wrap{display:flex;gap:3px;align-items:center;flex-wrap:wrap}
+#emo-inner{display:none;gap:3px;align-items:center}
+#emo-inner.open{display:flex}
+#btn-emo-toggle{font-size:11px;padding:4px 8px}
+
+/* ── H2リンク ── */
+#h2link{
+  display:inline-flex;align-items:center;gap:4px;
+  font-family:inherit;font-size:11px;padding:4px 9px;
+  border:1px solid #1555a0;border-radius:4px;
+  background:#e3eef8;color:#1555a0;
+  text-decoration:none;white-space:nowrap;
+  cursor:pointer;
+}
+#h2link:hover{background:#c8ddf5}
+
+/* ── Main ── */
+#main{flex:1;display:flex;overflow:hidden}
+
+/* ── Canvas ── */
+#cwrap{flex:1;position:relative;overflow:auto;background:var(--bg);background-image:radial-gradient(circle,#c8c4bb 1px,transparent 1px);background-size:28px 28px}
+#cv{display:block;cursor:default}
+#sb{position:fixed;left:12px;bottom:12px;font-size:11px;color:var(--tx2);background:rgba(255,255,255,.92);padding:3px 10px;border-radius:16px;border:1px solid var(--bd);pointer-events:none;z-index:100;max-width:55%}
+
+/* ── Panel ── */
+#pnl{width:216px;background:var(--sur);border-left:1px solid var(--bd);display:none;flex-direction:column;flex-shrink:0;overflow-y:auto}
+#pnl.open{display:flex}
+#phdr{padding:9px 14px 7px;font-size:11px;font-weight:700;color:var(--tx2);letter-spacing:.06em;border-bottom:1px solid var(--bd);background:var(--sur2)}
+#pbody{padding:11px 13px;display:flex;flex-direction:column;gap:9px}
+.fld{display:flex;flex-direction:column;gap:3px}
+.fld label{font-size:11px;color:var(--tx2);font-weight:600}
+.fld input,.fld select{font-family:inherit;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:4px;background:var(--sur);color:var(--tx);width:100%}
+.fld input:focus,.fld select:focus{outline:none;border-color:var(--blu)}
+.frow{display:flex;gap:7px}
+.frow .fld{flex:1;min-width:0}
+#pbody button{width:100%;padding:6px;margin-top:1px}
+#ipbtn{background:var(--grn-l);border-color:var(--grn);color:var(--grn);font-weight:700;font-size:12px;padding:7px}
+#ipbtn:hover{background:#c0e8d4}
+#ipbtn.on{background:var(--grn);color:#fff}
+.hdiv{border:none;border-top:1px solid var(--bd);margin:2px 0}
+
+/* ── 付箋コメント ── */
+.sticky-wrap{position:absolute;pointer-events:none;top:0;left:0;width:0;height:0}
+.sticky{
+  position:absolute;
+  min-width:100px;max-width:200px;
+  background:#fef9c3;
+  border:1px solid #e6d84a;
+  border-radius:4px;
+  padding:6px 28px 6px 8px;
+  font-size:12px;line-height:1.5;
+  color:#3a3000;
+  box-shadow:1px 2px 6px rgba(0,0,0,.12);
+  pointer-events:all;
+  cursor:move;
+  word-break:break-all;
+  white-space:pre-wrap;
+}
+.sticky.sel-sticky{outline:2px solid #1555a0;}
+.sticky-del{
+  position:absolute;top:3px;right:4px;
+  background:none;border:none;
+  font-size:13px;color:#a08000;
+  cursor:pointer;padding:0;line-height:1;
+}
+.sticky-del:hover{color:#b02828}
+/* ── Legend ── */
+#lgd{background:var(--sur);border-top:1px solid var(--bd);padding:4px 12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.li{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--tx2)}
+</style>
+</head>
+<body>
+
+<div id="hdr">
+  <h1>📋 ジェノグラム</h1>
+  <div class="sep"></div>
+  <div class="grp">
+    <span class="glbl">人物</span>
+    <button class="ga" id="btn-male"    onclick="setTool('male')">□ 男性</button>
+    <button class="ga" id="btn-female"  onclick="setTool('female')">○ 女性</button>
+    <button class="ga" id="btn-unk"     onclick="setTool('unk')">△ 不明</button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <span class="glbl">婚姻関係</span>
+    <button class="gl" id="btn-marriage" onclick="setTool('marriage')">━ 婚姻</button>
+    <button class="gl" id="btn-sep"      onclick="setTool('sep')">╱ 別居</button>
+    <button class="gl" id="btn-divorced" onclick="setTool('divorced')">╱╱ 離婚</button>
+    <button class="gl" id="btn-common"   onclick="setTool('common')">… 内縁</button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <span class="glbl">親子</span>
+    <button class="gl" id="btn-child"   onclick="setTool('child')">↓ 実子</button>
+    <button class="gl" id="btn-adopted" onclick="setTool('adopted')">↓… 養子</button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp" id="emo-wrap">
+    <button class="ge" id="btn-emo-toggle" onclick="toggleEmo()" title="感情関係線">感情 ▶</button>
+    <div id="emo-inner">
+      <button class="ge" id="btn-close"    onclick="setTool('close')">≡ 親密</button>
+      <button class="ge" id="btn-conflict" onclick="setTool('conflict')">⌇ 対立</button>
+      <button class="ge" id="btn-distant"  onclick="setTool('distant')">⋯ 疎遠</button>
+    </div>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <span class="glbl">囲み</span>
+    <button class="gk" id="btn-hh" onclick="setTool('hh')">⬚ 同居</button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <span class="glbl">テキスト</span>
+    <button class="gn" id="btn-comment" onclick="setTool('comment')">💬 コメント</button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <button class="gd" onclick="delSel()">✕ 削除</button>
+    <button class="gn" id="btn-undo" onclick="undo()" disabled title="Ctrl+Z">↩ 戻す</button>
+    <button class="gn" onclick="clearAll()">全消去</button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <button class="gn" onclick="savePNG()">📷 PNG保存</button>
+    <button class="gn" onclick="savePDF()">📄 PDF保存</button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <a id="h2link" href="https://care-support.h2-platform.com/Assessment/" target="_blank">🔗 H2アセスメント</a>
+  </div>
+</div>
+
+<!-- タブバー -->
+<div id="tab-bar">
+  <button class="tab-btn on" onclick="switchTab('geno')">📋 ジェノグラム</button>
+  <button class="tab-btn" onclick="switchTab('fp')">🏠 住宅見取り図</button>
+</div>
+
+<!-- ジェノグラムページ -->
+<div id="page-geno" class="page on">
+<button id="float-sel" onclick="setTool('sel')" title="移動・選択モード">✥ 移動</button>
+<div id="main">
+  <div id="cwrap">
+    <svg id="cv" xmlns="http://www.w3.org/2000/svg" width="1600" height="1000"></svg>
+    <div id="sticky-wrap" class="sticky-wrap"></div>
+  </div>
+  <div id="pnl">
+    <div id="phdr">プロパティ</div>
+    <div id="pbody">
+      <div class="fld"><label>👤 本人（IP）</label>
+        <button id="ipbtn" onclick="toggleIP()">本人（IP）に設定する</button>
+        <div style="font-size:10px;color:var(--tx3);margin-top:3px;line-height:1.5">設定すると二重線で表示されます</div>
+      </div>
+      <hr class="hdiv">
+      <div class="fld"><label>名前</label>
+        <input id="pname" type="text" placeholder="田中 太郎" oninput="upd('name',this.value)"></div>
+      <div class="frow">
+        <div class="fld"><label>年齢</label>
+          <input id="page" type="number" min="0" max="120" placeholder="歳" oninput="upd('age',this.value)"></div>
+        <div class="fld"><label>状態</label>
+          <select id="pstat" onchange="upd('status',this.value)">
+            <option value="alive">生存</option>
+            <option value="dead">死亡</option>
+            <option value="focus">注目</option>
+          </select></div>
+      </div>
+      <div class="fld"><label>キーパーソン</label>
+        <select id="pkp" onchange="upd('kp',this.value==='1')">
+          <option value="0">─</option>
+          <option value="1">★ キーパーソン</option>
+        </select></div>
+      <div class="fld"><label>備考</label>
+        <input id="pnote" type="text" placeholder="要介護・疾患など" oninput="upd('note',this.value)"></div>
+      <hr class="hdiv">
+      <button class="gd" onclick="delSel()">✕ この要素を削除</button>
+    </div>
+  </div>
+</div>
+
+<div id="lgd">
+  <div class="li"><svg width="16" height="16"><rect x="1" y="1" width="14" height="14" fill="none" stroke="#444" stroke-width="1.5"/></svg>男性</div>
+  <div class="li"><svg width="16" height="16"><circle cx="8" cy="8" r="7" fill="none" stroke="#444" stroke-width="1.5"/></svg>女性</div>
+  <div class="li"><svg width="16" height="16"><polygon points="8,1 15,14 1,14" fill="none" stroke="#444" stroke-width="1.5"/></svg>不明</div>
+  <div class="li"><svg width="22" height="22"><rect x="1" y="1" width="20" height="20" fill="none" stroke="#1a7a56" stroke-width="1.8"/><rect x="5" y="5" width="12" height="12" fill="none" stroke="#1a7a56" stroke-width="1.5"/></svg>本人(IP)</div>
+  <div class="li"><svg width="16" height="16"><rect x="1" y="1" width="14" height="14" fill="none" stroke="#999" stroke-width="1.5"/><line x1="3" y1="3" x2="13" y2="13" stroke="#999" stroke-width="1.5"/><line x1="13" y1="3" x2="3" y2="13" stroke="#999" stroke-width="1.5"/></svg>死亡</div>
+  <div class="li"><svg width="18" height="16"><text x="9" y="12" text-anchor="middle" font-size="13" fill="#b87010">★</text></svg>KP</div>
+  <div class="li"><svg width="26" height="16"><line x1="2" y1="8" x2="24" y2="8" stroke="#1a7a56" stroke-width="2"/></svg>婚姻</div>
+  <div class="li"><svg width="26" height="16"><line x1="2" y1="8" x2="24" y2="8" stroke="#b02828" stroke-width="1.5"/><line x1="11" y1="3" x2="14" y2="13" stroke="#b02828" stroke-width="2"/><line x1="14" y1="3" x2="17" y2="13" stroke="#b02828" stroke-width="2"/></svg>離婚</div>
+  <div class="li"><svg width="26" height="16"><line x1="2" y1="8" x2="24" y2="8" stroke="#555" stroke-width="1.5" stroke-dasharray="5 3"/></svg>内縁</div>
+  <div class="li"><svg width="26" height="16"><line x1="2" y1="8" x2="24" y2="8" stroke="#4e38a0" stroke-width="2"/><line x1="2" y1="5" x2="24" y2="5" stroke="#4e38a0" stroke-width="1"/><line x1="2" y1="11" x2="24" y2="11" stroke="#4e38a0" stroke-width="1"/></svg>親密</div>
+  <div class="li"><svg width="26" height="16"><line x1="2" y1="8" x2="24" y2="8" stroke="#b02828" stroke-width="2" stroke-dasharray="3 2"/></svg>対立</div>
+  <div class="li"><svg width="26" height="16"><line x1="2" y1="8" x2="24" y2="8" stroke="#888" stroke-width="1.5" stroke-dasharray="2 4"/></svg>疎遠</div>
+  <div class="li"><svg width="26" height="16"><rect x="1" y="1" width="24" height="14" rx="3" fill="none" stroke="#b87010" stroke-width="1.5" stroke-dasharray="5 3"/></svg>同居</div>
+</div>
+
+<div id="sb">✥ 移動・選択モード ｜ 人物ボタンを押して配置開始</div>
+</div><!-- /page-geno -->
+
+<!-- 住宅見取り図ページ -->
+<div id="page-fp" class="page">
+<!-- 見取り図ツールバー -->
+<div id="fp-toolbar">
+  <div class="grp">
+    <button onclick="fpSetTool('sel')" id="fbt-sel"
+      style="border-color:#1555a0;color:#1555a0;font-weight:700;padding:5px 12px;font-size:12px"
+      title="家具・部屋を動かすときはこれを押す">✥ 移動・選択</button>
+  </div>
+  <div class="tsep"></div>
+  <div class="grp">
+    <span class="tlbl">部屋</span>
+    <button onclick="fpSetTool('room-j')" id="fbt-room-j">和室</button>
+    <button onclick="fpSetTool('room-y')" id="fbt-room-y">洋室</button>
+    <button onclick="fpSetTool('room-h')" id="fbt-room-h">廊下</button>
+    <button onclick="fpSetTool('room-e')" id="fbt-room-e">玄関</button>
+    <button onclick="fpSetTool('room-b')" id="fbt-room-b">浴室</button>
+    <button onclick="fpSetTool('room-t')" id="fbt-room-t">トイレ</button>
+    <button onclick="fpSetTool('room-k')" id="fbt-room-k">台所</button>
+    <button onclick="fpSetTool('room-s')" id="fbt-room-s">階段</button>
+    <button onclick="fpSetTool('room-c')" id="fbt-room-c">押入れ</button>
+    <button onclick="fpSetTool('room-x')" id="fbt-room-x">その他</button>
+  </div>
+  <div class="tsep"></div>
+  <div class="grp">
+    <span class="tlbl">設備</span>
+    <button onclick="fpSetTool('sym-bed')"    id="fbt-sym-bed">🛏 ベッド</button>
+    <button onclick="fpSetTool('sym-desk')"   id="fbt-sym-desk">🪑 机</button>
+    <button onclick="fpSetTool('sym-door')"   id="fbt-sym-door" title="ドア（弧）記号">🚪 ドア</button>
+    <button onclick="fpSetTool('sym-door2')"  id="fbt-sym-door2" title="引き戸記号">⊣ 引き戸</button>
+    <button onclick="fpSetTool('sym-win')"    id="fbt-sym-win"  title="窓（壁埋め込み）記号">⊟ 窓</button>
+    <button onclick="fpSetTool('sym-genkan')" id="fbt-sym-genkan" title="玄関の上がり框記号">⌂ 玄関框</button>
+    <button onclick="fpSetTool('sym-step')"   id="fbt-sym-step" title="段差▲">▲ 段差</button>
+  </div>
+  <div class="tsep"></div>
+  <div class="grp">
+    <span class="tlbl">線</span>
+    <button onclick="fpSetTool('line')"  id="fbt-line">─ 実線</button>
+    <button onclick="fpSetTool('dash')"  id="fbt-dash">⋯ 破線</button>
+  </div>
+  <div class="tsep"></div>
+  <div class="grp">
+    <span class="tlbl">テキスト</span>
+    <button onclick="fpSetTool('text')" id="fbt-text">💬 コメント</button>
+  </div>
+  <div class="tsep"></div>
+  <div class="grp">
+    <button onclick="fpDelSel()" style="border-color:#b02828;color:#b02828">✕ 削除</button>
+    <button onclick="fpUndo()" id="fbt-undo" disabled>↩ 戻す</button>
+    <button onclick="fpClearAll()">全消去</button>
+  </div>
+  <div class="tsep"></div>
+  <div class="grp">
+    <button onclick="fpToggleSnap()" id="fbt-snap"
+      style="border-color:#1a7a56;color:#1a7a56;background:#e3f5ed"
+      title="グリッドにぴったり合わせる機能（ON=20cm単位で自動整列、OFF=自由配置）">⊞ グリッド整列ON</button>
+  </div>
+  <div class="tsep"></div>
+  <div class="grp">
+    <button onclick="fpSavePNG()">📷 PNG</button>
+    <button onclick="fpSavePDF()">📄 PDF</button>
+  </div>
+</div>
+
+<!-- 見取り図キャンバス -->
+<div id="fp-wrap">
+  <svg id="fp-cv" xmlns="http://www.w3.org/2000/svg" width="1600" height="1200"></svg>
+  <div id="fp-sticky-wrap" style="position:absolute;top:0;left:0;pointer-events:none;width:0;height:0"></div>
+</div>
+<!-- 凡例 -->
+<div style="background:var(--sur);border-top:1px solid var(--bd);padding:4px 12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:10px;color:var(--tx2)">
+  <span>■ 和室</span><span>□ 洋室</span><span>▭ 廊下/玄関</span>
+  <span>🚪 出入口（弧）</span><span>🪟 窓</span><span>▲ 段差</span>
+  <span>─ 実線</span><span style="letter-spacing:2px">- - 破線</span>
+  <span style="font-size:10px;color:var(--tx3)">グリッド1マス=20cm目安</span>
+</div>
+<div id="fp-sb" style="position:fixed;left:12px;bottom:12px;font-size:11px;color:var(--tx2);background:rgba(255,255,255,.92);padding:3px 10px;border-radius:16px;border:1px solid var(--bd);pointer-events:none;z-index:100">✥ 移動モード</div>
+</div><!-- /page-fp -->
+
+<script>
+// ════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════
+const cv = document.getElementById('cv');
+let tool = 'sel';
+let nodes  = [];   // {id,type,x,y,name,age,status,kp,note}
+let couples= [];   // {id,type,n1,n2}  (婚姻・別居・離婚・内縁)
+let clinks = [];   // {id,type,coupleId|null,parentId|null,childId}
+let elinks = [];   // {id,type,a,b}  感情関係線
+let areas  = [];   // {id,x,y,w,h}
+let comments=[];   // {id,x,y,text}
+let sel    = null; // {kind,ref}
+let step   = null; // multi-click state
+let hdraw  = null; // household draw start
+let drag   = null;
+let nid    = 1;
+let hist   = [];
+const HMAX = 60;
+const R    = 26, GAP = 5;
+
+// ════════════════════════════════════════════
+// UNDO
+// ════════════════════════════════════════════
+function snap(){
+  const s=JSON.stringify({nodes,couples,clinks,elinks,areas,comments});
+  if(hist.length&&hist[hist.length-1]===s)return;
+  hist.push(s);if(hist.length>HMAX)hist.shift();
+  document.getElementById('btn-undo').disabled=false;
+}
+function undo(){
+  if(!hist.length)return;
+  const s=JSON.parse(hist.pop());
+  nodes=s.nodes;couples=s.couples;clinks=s.clinks;elinks=s.elinks;areas=s.areas;comments=s.comments||[];
+  sel=null;step=null;
+  document.getElementById('pnl').classList.remove('open');
+  document.getElementById('btn-undo').disabled=hist.length===0;
+  render();
+}
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();undo();}
+});
+
+// ════════════════════════════════════════════
+// TOOL
+// ════════════════════════════════════════════
+const MSGS={
+  male:'□ クリックして男性を配置',female:'○ クリックして女性を配置',unk:'△ クリックして不明を配置',
+  marriage:'婚姻線 ─ 1人目→2人目をクリック',sep:'別居線 ─ 1人目→2人目をクリック',
+  divorced:'離婚線 ─ 1人目→2人目をクリック',common:'内縁線 ─ 1人目→2人目をクリック',
+  child:'実子線 ─ ①婚姻線 or 単親 → ②子どもをクリック',
+  adopted:'養子線 ─ ①婚姻線 or 単親 → ②子どもをクリック',
+  close:'親密線 ─ 1人目→2人目をクリック',conflict:'対立線 ─ 1人目→2人目をクリック',
+  distant:'疎遠線 ─ 1人目→2人目をクリック',
+  hh:'同居囲み ─ ドラッグして範囲を描く',
+  comment:'💬 キャンバスをタップした場所にコメントを追加',
+  sel:'✥ ドラッグで移動 ｜ クリックで選択・編集'
+};
+function toggleEmo(){
+  const inner=document.getElementById('emo-inner');
+  const tog=document.getElementById('btn-emo-toggle');
+  const open=inner.classList.toggle('open');
+  tog.textContent=open?'感情 ▼':'感情 ▶';
+}
+
+function setTool(t){
+  tool=t;step=null;hdraw=null;
+  document.querySelectorAll('button[id^="btn-"]').forEach(b=>b.classList.remove('active'));
+  const b=document.getElementById('btn-'+t);if(b)b.classList.add('active');
+  // 浮きボタンのアクティブ表示
+  const fs=document.getElementById('float-sel');
+  if(fs) fs.classList.toggle('active', t==='sel');
+  setSb(MSGS[t]||'');render();
+}
+function setSb(m){document.getElementById('sb').textContent=m;}
+
+// ════════════════════════════════════════════
+// COORDS
+// ════════════════════════════════════════════
+function gp(e){
+  const r=cv.getBoundingClientRect();
+  return{x:e.clientX-r.left,y:e.clientY-r.top};
+}
+function nodeAt(x,y){
+  for(let i=nodes.length-1;i>=0;i--)
+    if(Math.hypot(nodes[i].x-x,nodes[i].y-y)<R+8)return nodes[i];
+  return null;
+}
+function areaAt(x,y){
+  for(let i=areas.length-1;i>=0;i--){
+    const a=areas[i];
+    if(x>=a.x&&x<=a.x+a.w&&y>=a.y&&y<=a.y+a.h)return a;
+  }return null;
+}
+function isRH(a,x,y){return Math.hypot(x-(a.x+a.w),y-(a.y+a.h))<12;}
+function coupleMid(c){
+  const n1=nodes.find(n=>n.id===c.n1),n2=nodes.find(n=>n.id===c.n2);
+  if(!n1||!n2)return null;
+  return{x:(n1.x+n2.x)/2,y:(n1.y+n2.y)/2,n1,n2};
+}
+function coupleAt(x,y){
+  for(let i=couples.length-1;i>=0;i--){
+    const c=couples[i],m=coupleMid(c);if(!m)continue;
+    const{n1,n2}=m;
+    const mn=Math.min(n1.x,n2.x),mx=Math.max(n1.x,n2.x);
+    const my=(n1.y+n2.y)/2;
+    if(x>=mn-8&&x<=mx+8&&Math.abs(y-my)<14)return c;
+  }return null;
+}
+
+// ════════════════════════════════════════════
+// EVENTS  （mouse + touch 両対応）
+// ════════════════════════════════════════════
+function normEvent(e){
+  // タッチイベントをマウスイベント相当に正規化
+  if(e.touches||e.changedTouches){
+    const t=(e.touches&&e.touches[0])||(e.changedTouches&&e.changedTouches[0]);
+    return{clientX:t.clientX,clientY:t.clientY,_touch:true,preventDefault:()=>e.preventDefault()};
+  }
+  return e;
+}
+cv.addEventListener('mousedown',onDown,{passive:false});
+window.addEventListener('mousemove',onMove,{passive:false});
+window.addEventListener('mouseup',onUp,{passive:false});
+cv.addEventListener('touchstart',e=>{e.preventDefault();onDown(normEvent(e));},{passive:false});
+window.addEventListener('touchmove',e=>{if(!drag&&!hdraw)return;e.preventDefault();onMove(normEvent(e));},{passive:false});
+window.addEventListener('touchend',e=>{onUp(normEvent(e));},{passive:false});
+
+function onDown(e){
+  if(!e._touch&&e.button!==0)return;
+  e.preventDefault&&e.preventDefault();
+  const p=gp(e),hn=nodeAt(p.x,p.y),ha=areaAt(p.x,p.y),hc=coupleAt(p.x,p.y);
+
+  // ── Select / Move ──
+  if(tool==='sel'){
+    if(hn){drag={kind:'node',ref:hn,ox:p.x-hn.x,oy:p.y-hn.y};selItem({kind:'node',ref:hn});}
+    else if(ha){
+      if(isRH(ha,p.x,p.y))drag={kind:'ar',ref:ha,ox:p.x-(ha.x+ha.w),oy:p.y-(ha.y+ha.h)};
+      else drag={kind:'area',ref:ha,ox:p.x-ha.x,oy:p.y-ha.y};
+      selItem({kind:'area',ref:ha});
+    }else selItem(null);
+    return;
+  }
+
+  // ── Place node ──
+  if(['male','female','unk'].includes(tool)){
+    snap();
+    const n={id:nid++,type:tool,x:p.x,y:p.y,name:'',age:'',status:'alive',kp:false,note:''};
+    nodes.push(n);render();selItem({kind:'node',ref:n});
+    setSb('右パネルで名前・年齢を入力。利用者本人なら「本人（IP）に設定」を押してください');
+    return;
+  }
+
+  // ── Couple lines ──
+  if(['marriage','sep','divorced','common'].includes(tool)){
+    if(!hn)return;
+    if(!step){step={t:tool,n1:hn};setSb('2人目をクリック');render();}
+    else{
+      if(step.n1.id!==hn.id){snap();couples.push({id:nid++,type:tool,n1:step.n1.id,n2:hn.id});}
+      step=null;setSb(MSGS[tool]);render();
+    }return;
+  }
+
+  // ── Child / Adopted ──
+  if(['child','adopted'].includes(tool)){
+    if(!step){
+      if(hc){step={t:tool,coupleId:hc.id,parentId:null};setSb('子どもをクリック');render();}
+      else if(hn){step={t:tool,coupleId:null,parentId:hn.id};setSb('子どもをクリック');render();}
+      else setSb('①婚姻線（横線）または親をクリック');
+    }else{
+      if(!hn)return;
+      if(step.parentId&&step.parentId===hn.id)return;
+      snap();
+      clinks.push({id:nid++,type:tool,coupleId:step.coupleId,parentId:step.parentId,childId:hn.id});
+      step=null;setSb(MSGS[tool]);render();
+    }return;
+  }
+
+  // ── Emotion lines ──
+  if(['close','conflict','distant'].includes(tool)){
+    if(!hn)return;
+    if(!step){step={t:tool,a:hn};setSb('2人目をクリック');render();}
+    else{
+      if(step.a.id!==hn.id){snap();elinks.push({id:nid++,type:tool,a:step.a.id,b:hn.id});}
+      step=null;setSb(MSGS[tool]);render();
+    }return;
+  }
+
+  // ── Household ──
+  if(tool==='hh'){hdraw={x0:p.x,y0:p.y};return;}
+
+  // ── Comment ──
+  if(tool==='comment'){
+    const text=prompt('コメントを入力してください','');
+    if(text===null||text.trim()==='')return;
+    snap();
+    comments.push({id:nid++,x:p.x,y:p.y,text:text.trim()});
+    renderStickies();
+    return;
+  }
+}
+
+function onMove(e){
+  if(!drag&&!hdraw)return;
+  const p=gp(e);
+  if(drag){
+    if(drag.kind==='node'){drag.ref.x=p.x-drag.ox;drag.ref.y=p.y-drag.oy;}
+    else if(drag.kind==='area'){drag.ref.x=p.x-drag.ox;drag.ref.y=p.y-drag.oy;}
+    else if(drag.kind==='ar'){drag.ref.w=Math.max(40,p.x-drag.ox-drag.ref.x);drag.ref.h=Math.max(40,p.y-drag.oy-drag.ref.y);}
+    render();return;
+  }
+  if(hdraw){
+    render();
+    const x=Math.min(hdraw.x0,p.x),y=Math.min(hdraw.y0,p.y),w=Math.abs(p.x-hdraw.x0),h=Math.abs(p.y-hdraw.y0);
+    const r=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    r.setAttribute('x',x);r.setAttribute('y',y);r.setAttribute('width',Math.max(w,2));r.setAttribute('height',Math.max(h,2));
+    r.setAttribute('rx','8');r.setAttribute('fill','rgba(184,112,16,.07)');
+    r.setAttribute('stroke','#b87010');r.setAttribute('stroke-width','1.8');r.setAttribute('stroke-dasharray','6 4');
+    r.setAttribute('pointer-events','none');cv.appendChild(r);
+  }
+}
+function onUp(e){
+  if(drag){snap();drag=null;render();return;}
+  if(hdraw){
+    const p=gp(e);
+    const x=Math.min(hdraw.x0,p.x),y=Math.min(hdraw.y0,p.y),w=Math.abs(p.x-hdraw.x0),h=Math.abs(p.y-hdraw.y0);
+    if(w>20&&h>20){snap();areas.push({id:nid++,x,y,w,h});}
+    hdraw=null;render();
+  }
+}
+
+// ════════════════════════════════════════════
+// SELECTION
+// ════════════════════════════════════════════
+function selItem(item){
+  sel=item;
+  const pnl=document.getElementById('pnl');
+  if(item&&item.kind==='node'){
+    const n=item.ref;
+    pnl.classList.add('open');
+    document.getElementById('pname').value=n.name||'';
+    document.getElementById('page').value=n.age||'';
+    document.getElementById('pstat').value=(n.status==='ip'?'alive':n.status)||'alive';
+    document.getElementById('pnote').value=n.note||'';
+    document.getElementById('pkp').value=n.kp?'1':'0';
+    const ib=document.getElementById('ipbtn');
+    if(n.status==='ip'){ib.textContent='✔ 本人（IP）設定済み';ib.classList.add('on');}
+    else{ib.textContent='本人（IP）に設定する';ib.classList.remove('on');}
+  }else pnl.classList.remove('open');
+  render();
+}
+function toggleIP(){
+  if(!sel||sel.kind!=='node')return;
+  snap();const n=sel.ref;
+  n.status=(n.status==='ip')?'alive':'ip';
+  const ib=document.getElementById('ipbtn');
+  if(n.status==='ip'){ib.textContent='✔ 本人（IP）設定済み';ib.classList.add('on');}
+  else{ib.textContent='本人（IP）に設定する';ib.classList.remove('on');}
+  render();
+}
+function upd(k,v){
+  if(!sel||sel.kind!=='node')return;
+  sel.ref[k]=v;
+  if(k==='status'){document.getElementById('ipbtn').textContent='本人（IP）に設定する';document.getElementById('ipbtn').classList.remove('on');}
+  render();
+}
+function delSel(){
+  if(!sel)return;snap();
+  if(sel.kind==='node'){
+    const id=sel.ref.id;
+    nodes=nodes.filter(n=>n.id!==id);
+    const rmC=couples.filter(c=>c.n1===id||c.n2===id).map(c=>c.id);
+    couples=couples.filter(c=>c.n1!==id&&c.n2!==id);
+    clinks=clinks.filter(cl=>!rmC.includes(cl.coupleId)&&cl.childId!==id&&cl.parentId!==id);
+    elinks=elinks.filter(el=>el.a!==id&&el.b!==id);
+  }else if(sel.kind==='area')areas=areas.filter(a=>a.id!==sel.ref.id);
+  sel=null;document.getElementById('pnl').classList.remove('open');render();
+}
+function clearAll(){
+  if(!confirm('すべての要素を削除しますか？'))return;
+  snap();nodes=[];couples=[];clinks=[];elinks=[];areas=[];comments=[];
+  sel=null;step=null;
+  document.getElementById('pnl').classList.remove('open');render();
+}
+
+// ════════════════════════════════════════════
+// RENDER HELPERS
+// ════════════════════════════════════════════
+function es(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function rArea(a){
+  const isSel=sel&&sel.kind==='area'&&sel.ref.id===a.id;
+  const c=isSel?'#1555a0':'#b87010',f=isSel?'rgba(21,85,160,.06)':'rgba(184,112,16,.05)';
+  const hx=a.x+a.w,hy=a.y+a.h;
+  return`<g>
+  <rect x="${a.x}" y="${a.y}" width="${a.w}" height="${a.h}" rx="10" fill="${f}" stroke="${c}" stroke-width="1.8" stroke-dasharray="8 4" pointer-events="none"/>
+  <text x="${a.x+11}" y="${a.y+17}" font-size="11" fill="${c}" font-family="inherit" pointer-events="none">同居</text>
+  <rect x="${a.x}" y="${a.y}" width="${a.w}" height="${a.h}" rx="10" fill="transparent" stroke="transparent" stroke-width="3" class="ht-area" data-id="${a.id}" style="cursor:move"/>
+  <circle cx="${hx}" cy="${hy}" r="7" fill="${c}" fill-opacity=".15" stroke="${c}" stroke-width="1" class="ht-rh" data-id="${a.id}" style="cursor:se-resize"/>
+  <text x="${hx}" y="${hy+4}" text-anchor="middle" font-size="9" fill="${c}" pointer-events="none">⤡</text>
+</g>`;
+}
+
+// 人物の縁座標を返す（線がどこで図形に当たるか）
+function nodeEdge(n, tx, ty){
+  const dx=tx-n.x, dy=ty-n.y;
+  if(dx===0&&dy===0)return{x:n.x,y:n.y};
+  if(n.type==='female'){
+    // 円: 半径Rの縁
+    const len=Math.hypot(dx,dy);
+    return{x:n.x+dx/len*R, y:n.y+dy/len*R};
+  }else if(n.type==='male'){
+    // 正方形: 辺との交点
+    const abx=Math.abs(dx),aby=Math.abs(dy);
+    const s=R/Math.max(abx,aby);
+    return{x:n.x+dx*s, y:n.y+dy*s};
+  }else{
+    // 三角形（上頂点, 左下, 右下）近似: 正方形と同じ扱いで十分
+    const abx=Math.abs(dx),aby=Math.abs(dy);
+    const s=(R*0.8)/Math.max(abx,aby);
+    return{x:n.x+dx*s, y:n.y+dy*s};
+  }
+}
+
+function rCouple(c){
+  const n1=nodes.find(n=>n.id===c.n1),n2=nodes.find(n=>n.id===c.n2);
+  if(!n1||!n2)return'';
+  // 線の端点を図形の縁まで
+  const e1=nodeEdge(n1,n2.x,n2.y);
+  const e2=nodeEdge(n2,n1.x,n1.y);
+  const isSel=step&&step.coupleId===c.id;
+  const hl=isSel?`<line x1="${e1.x}" y1="${e1.y}" x2="${e2.x}" y2="${e2.y}" stroke="#4e38a0" stroke-width="5" stroke-opacity=".2" pointer-events="none"/>`:'';
+  let ln='';
+  if(c.type==='marriage')
+    ln=`<line x1="${e1.x}" y1="${e1.y}" x2="${e2.x}" y2="${e2.y}" stroke="#1a7a56" stroke-width="2" pointer-events="none"/>`;
+  else if(c.type==='sep'){
+    const ang=Math.atan2(n2.y-n1.y,n2.x-n1.x),mx=(e1.x+e2.x)/2,my=(e1.y+e2.y)/2;
+    const px=Math.sin(ang)*6,py=Math.cos(ang)*6,cc=Math.cos(ang)*5,cy=Math.sin(ang)*5;
+    ln=`<line x1="${e1.x}" y1="${e1.y}" x2="${e2.x}" y2="${e2.y}" stroke="#b02828" stroke-width="1.5" pointer-events="none"/>
+    <line x1="${mx-px-cc}" y1="${my+py-cy}" x2="${mx+px+cc}" y2="${my-py+cy}" stroke="#b02828" stroke-width="2" pointer-events="none"/>`;
+  }else if(c.type==='divorced'){
+    const ang=Math.atan2(n2.y-n1.y,n2.x-n1.x),mx=(e1.x+e2.x)/2,my=(e1.y+e2.y)/2;
+    const px=Math.sin(ang)*6,py=Math.cos(ang)*6,cc=Math.cos(ang)*5,cy=Math.sin(ang)*5;
+    ln=`<line x1="${e1.x}" y1="${e1.y}" x2="${e2.x}" y2="${e2.y}" stroke="#b02828" stroke-width="1.5" pointer-events="none"/>
+    <line x1="${mx-px-cc}" y1="${my+py-cy}" x2="${mx+px+cc}" y2="${my-py+cy}" stroke="#b02828" stroke-width="2.2" pointer-events="none"/>
+    <line x1="${mx-px-cc*1.8}" y1="${my+py-cy*1.8}" x2="${mx+px+cc*1.8}" y2="${my-py+cy*1.8}" stroke="#b02828" stroke-width="2.2" pointer-events="none"/>`;
+  }else if(c.type==='common')
+    ln=`<line x1="${e1.x}" y1="${e1.y}" x2="${e2.x}" y2="${e2.y}" stroke="#555" stroke-width="1.5" stroke-dasharray="5 3" pointer-events="none"/>`;
+  // hit領域は中心間で（クリックしやすくするため）
+  const hit=`<line x1="${n1.x}" y1="${n1.y}" x2="${n2.x}" y2="${n2.y}" stroke="transparent" stroke-width="16" class="ht-couple" data-id="${c.id}" style="cursor:pointer"/>`;
+  return`<g>${hl}${ln}${hit}</g>`;
+}
+
+function rChildLinks(){
+  let out='';
+  const groups={};
+  for(const cl of clinks){
+    const k=cl.coupleId?`c${cl.coupleId}`:`p${cl.parentId}`;
+    if(!groups[k])groups[k]={coupleId:cl.coupleId,parentId:cl.parentId,links:[]};
+    groups[k].links.push(cl);
+  }
+  for(const k of Object.keys(groups)){
+    const g=groups[k];let ox,oy;
+    if(g.coupleId){
+      const c=couples.find(c=>c.id===g.coupleId);if(!c)continue;
+      const n1=nodes.find(n=>n.id===c.n1),n2=nodes.find(n=>n.id===c.n2);if(!n1||!n2)continue;
+      ox=(n1.x+n2.x)/2;oy=(n1.y+n2.y)/2;
+    }else{
+      const p=nodes.find(n=>n.id===g.parentId);if(!p)continue;ox=p.x;oy=p.y;
+    }
+    const children=g.links.map(cl=>{
+      const ch=nodes.find(n=>n.id===cl.childId);
+      return ch?{node:ch,type:cl.type}:null;
+    }).filter(Boolean);
+    if(!children.length)continue;
+
+    const sc='#1a7a56';
+    // dropY = 親中点と子の中間
+    const avgCY=children.reduce((s,c)=>s+c.node.y,0)/children.length;
+    const dropY=oy+(avgCY-oy)*0.5;
+
+    if(children.length===1){
+      const ch=children[0];
+      // 子の上辺まで止める
+      const edge=nodeEdge(ch.node, ox, dropY);
+      const dash=ch.type==='adopted'?'stroke-dasharray="6 4"':'';
+      // 垂直幹線: 親から dropY
+      out+=`<line x1="${ox}" y1="${oy}" x2="${ox}" y2="${dropY}" stroke="${sc}" stroke-width="1.8" pointer-events="none"/>`;
+      // dropY から子の上辺（矢印なし）
+      out+=`<line x1="${ox}" y1="${dropY}" x2="${edge.x}" y2="${edge.y}" stroke="${sc}" stroke-width="1.8" ${dash} pointer-events="none"/>`;
+    }else{
+      // 垂直幹線
+      out+=`<line x1="${ox}" y1="${oy}" x2="${ox}" y2="${dropY}" stroke="${sc}" stroke-width="1.8" pointer-events="none"/>`;
+      // 水平バー
+      const xs=children.map(c=>c.node.x);
+      const mn=Math.min(...xs,ox),mxx=Math.max(...xs,ox);
+      out+=`<line x1="${mn}" y1="${dropY}" x2="${mxx}" y2="${dropY}" stroke="${sc}" stroke-width="1.8" pointer-events="none"/>`;
+      // 各子への垂直線（矢印なし、子の上辺で止まる）
+      for(const ch of children){
+        const edge=nodeEdge(ch.node, ch.node.x, dropY);
+        const dash=ch.type==='adopted'?'stroke-dasharray="6 4"':'';
+        out+=`<line x1="${ch.node.x}" y1="${dropY}" x2="${edge.x}" y2="${edge.y}" stroke="${sc}" stroke-width="1.8" ${dash} pointer-events="none"/>`;
+      }
+    }
+  }
+  return out;
+}
+
+function rElink(el){
+  const a=nodes.find(n=>n.id===el.a),b=nodes.find(n=>n.id===el.b);if(!a||!b)return'';
+  const mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+  const ang=Math.atan2(b.y-a.y,b.x-a.x);
+  const off=12;
+  const cx1=a.x+Math.cos(ang-Math.PI/2)*off+Math.cos(ang)*(Math.hypot(b.x-a.x,b.y-a.y)*.3);
+  const cy1=a.y+Math.sin(ang-Math.PI/2)*off+Math.sin(ang)*(Math.hypot(b.x-a.x,b.y-a.y)*.3);
+  const cx2=b.x+Math.cos(ang+Math.PI+Math.PI/2)*off+Math.cos(ang+Math.PI)*(Math.hypot(b.x-a.x,b.y-a.y)*.3);
+  const cy2=b.y+Math.sin(ang+Math.PI+Math.PI/2)*off+Math.sin(ang+Math.PI)*(Math.hypot(b.x-a.x,b.y-a.y)*.3);
+  if(el.type==='close'){
+    const d=`M${a.x},${a.y} C${cx1},${cy1} ${cx2},${cy2} ${b.x},${b.y}`;
+    const o1=off*1.8,cx1b=a.x+Math.cos(ang-Math.PI/2)*o1+Math.cos(ang)*(Math.hypot(b.x-a.x,b.y-a.y)*.3);
+    const cy1b=a.y+Math.sin(ang-Math.PI/2)*o1+Math.sin(ang)*(Math.hypot(b.x-a.x,b.y-a.y)*.3);
+    const cx2b=b.x+Math.cos(ang+Math.PI+Math.PI/2)*o1+Math.cos(ang+Math.PI)*(Math.hypot(b.x-a.x,b.y-a.y)*.3);
+    const cy2b=b.y+Math.sin(ang+Math.PI+Math.PI/2)*o1+Math.sin(ang+Math.PI)*(Math.hypot(b.x-a.x,b.y-a.y)*.3);
+    const d2=`M${a.x},${a.y} C${cx1b},${cy1b} ${cx2b},${cy2b} ${b.x},${b.y}`;
+    return`<path d="${d}" fill="none" stroke="#4e38a0" stroke-width="1.8" pointer-events="none"/>
+           <path d="${d2}" fill="none" stroke="#4e38a0" stroke-width="1.8" pointer-events="none"/>`;
+  }
+  if(el.type==='conflict'){
+    // ジグザグ線
+    const dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy);
+    const ux=dx/len,uy=dy/len,nx=-uy,ny=ux;
+    const steps=Math.max(4,Math.floor(len/20));
+    let pts=`${a.x},${a.y}`;
+    for(let i=1;i<=steps;i++){
+      const t=i/(steps+1),px=a.x+dx*t,py=a.y+dy*t;
+      const side=(i%2===0?1:-1)*8;
+      pts+=` ${px+nx*side},${py+ny*side}`;
+    }
+    pts+=` ${b.x},${b.y}`;
+    return`<polyline points="${pts}" fill="none" stroke="#b02828" stroke-width="2" pointer-events="none"/>`;
+  }
+  if(el.type==='distant'){
+    const d=`M${a.x},${a.y} C${cx1},${cy1} ${cx2},${cy2} ${b.x},${b.y}`;
+    return`<path d="${d}" fill="none" stroke="#888" stroke-width="1.5" stroke-dasharray="3 5" pointer-events="none"/>`;
+  }
+  return'';
+}
+
+function rNode(n){
+  const isSel=sel&&sel.kind==='node'&&sel.ref.id===n.id;
+  const isIP=n.status==='ip',isDead=n.status==='dead',isFocus=n.status==='focus';
+  const stroke=isDead?'#999':'#1a7a56';
+  const selS=isSel?'#1555a0':stroke;const sw=isSel?2.5:1.8;
+  const sg=isSel?`<circle cx="${n.x}" cy="${n.y}" r="${R+10}" fill="#1555a0" fill-opacity=".08"/>`:'';
+  const fr=isFocus?`<circle cx="${n.x}" cy="${n.y}" r="${R+9}" fill="none" stroke="#b87010" stroke-width="1.5" stroke-dasharray="5 3"/>`:'';
+  const sl=step&&((step.n1&&step.n1.id===n.id)||(step.a&&step.a.id===n.id))?
+    `<circle cx="${n.x}" cy="${n.y}" r="${R+13}" fill="none" stroke="#4e38a0" stroke-width="2" stroke-dasharray="4 3"/>`:'';
+  let sh='',inn='';
+  if(n.type==='male'){
+    sh=`<rect x="${n.x-R}" y="${n.y-R}" width="${R*2}" height="${R*2}" rx="3" fill="none" stroke="${selS}" stroke-width="${sw}"/>`;
+    if(isIP)inn=`<rect x="${n.x-R+GAP}" y="${n.y-R+GAP}" width="${(R-GAP)*2}" height="${(R-GAP)*2}" rx="2" fill="none" stroke="${stroke}" stroke-width="1.5"/>`;
+  }else if(n.type==='female'){
+    sh=`<circle cx="${n.x}" cy="${n.y}" r="${R}" fill="none" stroke="${selS}" stroke-width="${sw}"/>`;
+    if(isIP)inn=`<circle cx="${n.x}" cy="${n.y}" r="${R-GAP}" fill="none" stroke="${stroke}" stroke-width="1.5"/>`;
+  }else{
+    const ri=R-GAP;
+    sh=`<polygon points="${n.x},${n.y-R} ${n.x+R},${n.y+R*.6} ${n.x-R},${n.y+R*.6}" fill="none" stroke="${selS}" stroke-width="${sw}"/>`;
+    if(isIP)inn=`<polygon points="${n.x},${n.y-ri} ${n.x+ri},${n.y+ri*.6} ${n.x-ri},${n.y+ri*.6}" fill="none" stroke="${stroke}" stroke-width="1.5"/>`;
+  }
+  let ov='';
+  if(isDead)ov=`<line x1="${n.x-R+6}" y1="${n.y-R+6}" x2="${n.x+R-6}" y2="${n.y+R-6}" stroke="#999" stroke-width="1.5"/>
+  <line x1="${n.x+R-6}" y1="${n.y-R+6}" x2="${n.x-R+6}" y2="${n.y+R-6}" stroke="#999" stroke-width="1.5"/>`;
+  const kp=n.kp?`<text x="${n.x+R-2}" y="${n.y-R+10}" text-anchor="middle" font-size="14" fill="#b87010" pointer-events="none">★</text>`:'';
+  const ny=n.y+R+15;
+  const lbl=[n.name,n.age?`(${n.age})`:''].filter(Boolean).join(' ');
+  const lt=lbl?`<text x="${n.x}" y="${ny}" text-anchor="middle" font-size="11" fill="#5f5a54" font-family="inherit">${es(lbl)}</text>`:'';
+  const nt=n.note?`<text x="${n.x}" y="${ny+14}" text-anchor="middle" font-size="10" fill="#9c9590" font-family="inherit">${es(n.note)}</text>`:'';
+  const hit=`<circle cx="${n.x}" cy="${n.y}" r="${R+8}" fill="transparent" class="ht-node" data-id="${n.id}" style="cursor:move"/>`;
+  return`<g>${sg}${fr}${sl}${sh}${inn}${ov}${kp}${lt}${nt}${hit}</g>`;
+}
+
+// ════════════════════════════════════════════
+// MAIN RENDER
+// ════════════════════════════════════════════
+function render(){
+  // Auto-expand canvas if nodes near edge
+  if(nodes.length){
+    const maxX=Math.max(...nodes.map(n=>n.x))+80;
+    const maxY=Math.max(...nodes.map(n=>n.y))+80;
+    const cw=parseInt(cv.getAttribute('width')),ch=parseInt(cv.getAttribute('height'));
+    if(maxX>cw)cv.setAttribute('width',maxX+200);
+    if(maxY>ch)cv.setAttribute('height',maxY+200);
+  }
+
+  cv.innerHTML=`<defs></defs>
+${areas.map(rArea).join('')}
+${elinks.map(rElink).join('')}
+${couples.map(rCouple).join('')}
+${rChildLinks()}
+${nodes.map(rNode).join('')}`;
+
+  // ── hit要素のイベント（mouse + touch 共通ハンドラ） ──
+  function addHit(el, handler){
+    el.addEventListener('mousedown', ev=>{
+      if(ev.button!==0)return;
+      ev.stopPropagation();
+      handler(ev);
+    },{passive:false});
+    el.addEventListener('touchstart', ev=>{
+      ev.preventDefault();
+      ev.stopPropagation();
+      handler(normEvent(ev));
+    },{passive:false});
+  }
+
+  // nodes
+  cv.querySelectorAll('.ht-node').forEach(el=>{
+    addHit(el, ev=>{
+      const n=nodes.find(n=>n.id===+el.dataset.id);if(!n)return;
+      const p=gp(ev);
+      if(tool==='sel'){drag={kind:'node',ref:n,ox:p.x-n.x,oy:p.y-n.y};selItem({kind:'node',ref:n});}
+      else if(['marriage','sep','divorced','common'].includes(tool)){
+        if(!step){step={t:tool,n1:n};setSb('2人目をタップ');render();}
+        else{if(step.n1.id!==n.id){snap();couples.push({id:nid++,type:tool,n1:step.n1.id,n2:n.id});}step=null;setSb(MSGS[tool]);render();}
+      }else if(['child','adopted'].includes(tool)){
+        if(!step){step={t:tool,coupleId:null,parentId:n.id};setSb('子どもをタップ');render();}
+        else{if(step.parentId&&step.parentId===n.id)return;snap();clinks.push({id:nid++,type:tool,coupleId:step.coupleId,parentId:step.parentId,childId:n.id});step=null;setSb(MSGS[tool]);render();}
+      }else if(['close','conflict','distant'].includes(tool)){
+        if(!step){step={t:tool,a:n};setSb('2人目をタップ');render();}
+        else{if(step.a.id!==n.id){snap();elinks.push({id:nid++,type:tool,a:step.a.id,b:n.id});}step=null;setSb(MSGS[tool]);render();}
+      }
+    });
+  });
+
+  // couple hit
+  cv.querySelectorAll('.ht-couple').forEach(el=>{
+    addHit(el, ev=>{
+      const c=couples.find(c=>c.id===+el.dataset.id);if(!c)return;
+      if(['child','adopted'].includes(tool)){
+        if(!step){step={t:tool,coupleId:c.id,parentId:null};setSb('子どもをタップ');render();}
+      }
+    });
+  });
+
+  // area hits
+  cv.querySelectorAll('.ht-area').forEach(el=>{
+    addHit(el, ev=>{
+      if(tool!=='sel')return;
+      const a=areas.find(a=>a.id===+el.dataset.id);if(!a)return;
+      const p=gp(ev);drag={kind:'area',ref:a,ox:p.x-a.x,oy:p.y-a.y};selItem({kind:'area',ref:a});
+    });
+  });
+  cv.querySelectorAll('.ht-rh').forEach(el=>{
+    addHit(el, ev=>{
+      if(tool!=='sel')return;
+      const a=areas.find(a=>a.id===+el.dataset.id);if(!a)return;
+      const p=gp(ev);drag={kind:'ar',ref:a,ox:p.x-(a.x+a.w),oy:p.y-(a.y+a.h)};selItem({kind:'area',ref:a});
+    });
+  });
+  renderStickies();
+}
+
+// ════════════════════════════════════════════
+// STICKIES (付箋コメント)
+// ════════════════════════════════════════════
+// 付箋ドラッグの状態（window レベルで管理）
+let stickyDrag=null; // {cm, div, ox, oy}
+
+window.addEventListener('mousemove',ev=>{
+  if(!stickyDrag)return;
+  const r=document.getElementById('cwrap').getBoundingClientRect();
+  stickyDrag.cm.x=ev.clientX-r.left-stickyDrag.ox;
+  stickyDrag.cm.y=ev.clientY-r.top-stickyDrag.oy;
+  stickyDrag.div.style.left=stickyDrag.cm.x+'px';
+  stickyDrag.div.style.top=stickyDrag.cm.y+'px';
+});
+window.addEventListener('touchmove',ev=>{
+  if(!stickyDrag)return;
+  ev.preventDefault();
+  const t=ev.touches[0];
+  const r=document.getElementById('cwrap').getBoundingClientRect();
+  stickyDrag.cm.x=t.clientX-r.left-stickyDrag.ox;
+  stickyDrag.cm.y=t.clientY-r.top-stickyDrag.oy;
+  stickyDrag.div.style.left=stickyDrag.cm.x+'px';
+  stickyDrag.div.style.top=stickyDrag.cm.y+'px';
+},{passive:false});
+window.addEventListener('mouseup',()=>{
+  if(!stickyDrag)return;snap();stickyDrag=null;
+});
+window.addEventListener('touchend',()=>{
+  if(!stickyDrag)return;snap();stickyDrag=null;
+},{passive:false});
+
+function renderStickies(){
+  const wrap=document.getElementById('sticky-wrap');
+  wrap.innerHTML='';
+  comments.forEach(cm=>{
+    const div=document.createElement('div');
+    div.className='sticky'+(sel&&sel.kind==='comment'&&sel.ref.id===cm.id?' sel-sticky':'');
+    div.style.left=cm.x+'px';
+    div.style.top=cm.y+'px';
+    div.textContent=cm.text;
+
+    // 削除ボタン
+    const del=document.createElement('button');
+    del.className='sticky-del';del.textContent='✕';del.title='削除';
+    const onDel=ev=>{ev.stopPropagation();ev.preventDefault();snap();comments=comments.filter(c=>c.id!==cm.id);renderStickies();};
+    del.addEventListener('click',onDel);
+    del.addEventListener('touchstart',onDel,{passive:false});
+    div.appendChild(del);
+
+    // ダブルタップ/ダブルクリックで編集
+    let lastTap=0;
+    div.addEventListener('dblclick',ev=>{ev.stopPropagation();editSticky(cm);});
+    div.addEventListener('touchend',ev=>{
+      const now=Date.now();
+      if(now-lastTap<350&&!stickyDrag){ev.stopPropagation();ev.preventDefault();editSticky(cm);}
+      lastTap=now;
+    },{passive:false});
+
+    // ドラッグ開始（window レベルの move/up で追跡）
+    div.addEventListener('mousedown',ev=>{
+      if(ev.button!==0)return;
+      ev.stopPropagation();ev.preventDefault();
+      const r=document.getElementById('cwrap').getBoundingClientRect();
+      stickyDrag={cm,div,ox:ev.clientX-r.left-cm.x,oy:ev.clientY-r.top-cm.y};
+      sel={kind:'comment',ref:cm};renderStickies();
+    });
+    div.addEventListener('touchstart',ev=>{
+      ev.stopPropagation();
+      // ダブルタップ判定のためにpreventDefaultしない（touchendで判定）
+      const t=ev.touches[0];
+      const r=document.getElementById('cwrap').getBoundingClientRect();
+      stickyDrag={cm,div,ox:t.clientX-r.left-cm.x,oy:t.clientY-r.top-cm.y};
+      sel={kind:'comment',ref:cm};renderStickies();
+    },{passive:true});
+
+    wrap.appendChild(div);
+  });
+}
+
+function editSticky(cm){
+  const text=prompt('コメントを編集',cm.text);
+  if(text===null)return;
+  snap();
+  if(text.trim()===''){comments=comments.filter(c=>c.id!==cm.id);}
+  else{cm.text=text.trim();}
+  renderStickies();
+}
+
+// ════════════════════════════════════════════
+// SAVE: PNG + PDF
+// ════════════════════════════════════════════
+function getBounds(){
+  const all=[
+    ...nodes.map(n=>({x:n.x-R-30,y:n.y-R-20,x2:n.x+R+30,y2:n.y+R+50})),
+    ...areas.map(a=>({x:a.x-10,y:a.y-10,x2:a.x+a.w+10,y2:a.y+a.h+10})),
+    ...comments.map(cm=>({x:cm.x-10,y:cm.y-10,x2:cm.x+210,y2:cm.y+80}))
+  ];
+  if(!all.length)return{x:0,y:0,w:800,h:500};
+  const x=Math.max(0,Math.min(...all.map(b=>b.x))-30);
+  const y=Math.max(0,Math.min(...all.map(b=>b.y))-30);
+  const x2=Math.max(...all.map(b=>b.x2))+30;
+  const y2=Math.max(...all.map(b=>b.y2))+30;
+  return{x,y,w:x2-x,h:y2-y};
+}
+
+async function renderToCanvas(scale=2){
+  const b=getBounds();
+  const clone=cv.cloneNode(true);
+  clone.querySelectorAll('.ht-node,.ht-couple,.ht-area,.ht-rh').forEach(e=>e.remove());
+  // 付箋をSVGテキストとして書き込む
+  comments.forEach(cm=>{
+    const lines=cm.text.split('\n');
+    const g=document.createElementNS('http://www.w3.org/2000/svg','g');
+    const bw=Math.min(200,Math.max(100,lines.reduce((m,l)=>Math.max(m,l.length),0)*7+16));
+    const bh=lines.length*18+10;
+    const rect=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    rect.setAttribute('x',cm.x);rect.setAttribute('y',cm.y);
+    rect.setAttribute('width',bw);rect.setAttribute('height',bh);
+    rect.setAttribute('rx','4');rect.setAttribute('fill','#fef9c3');
+    rect.setAttribute('stroke','#e6d84a');rect.setAttribute('stroke-width','1');
+    g.appendChild(rect);
+    lines.forEach((line,i)=>{
+      const t=document.createElementNS('http://www.w3.org/2000/svg','text');
+      t.setAttribute('x',cm.x+8);t.setAttribute('y',cm.y+18+i*18);
+      t.setAttribute('font-size','12');t.setAttribute('fill','#3a3000');
+      t.setAttribute('font-family','sans-serif');
+      t.textContent=line;
+      g.appendChild(t);
+    });
+    clone.appendChild(g);
+  });
+  clone.setAttribute('width',b.w*scale);
+  clone.setAttribute('height',b.h*scale);
+  clone.setAttribute('viewBox',`${b.x} ${b.y} ${b.w} ${b.h}`);
+  // 白背景rectを先頭に挿入
+  const bg=document.createElementNS('http://www.w3.org/2000/svg','rect');
+  bg.setAttribute('x',b.x);bg.setAttribute('y',b.y);
+  bg.setAttribute('width',b.w);bg.setAttribute('height',b.h);
+  bg.setAttribute('fill','#ffffff');
+  clone.insertBefore(bg,clone.firstChild);
+
+  // SVG→Data URI（Blob URLではなくdata:で渡すことでiOS/Safariのセキュリティ制限を回避）
+  const svgStr=new XMLSerializer().serializeToString(clone);
+  const svgB64=btoa(unescape(encodeURIComponent(svgStr)));
+  const dataUrl='data:image/svg+xml;base64,'+svgB64;
+
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.onload=()=>{
+      try{
+        const canvas=document.createElement('canvas');
+        canvas.width=b.w*scale;canvas.height=b.h*scale;
+        const ctx=canvas.getContext('2d');
+        ctx.fillStyle='#ffffff';ctx.fillRect(0,0,canvas.width,canvas.height);
+        ctx.drawImage(img,0,0);
+        resolve({canvas,b});
+      }catch(err){reject(err);}
+    };
+    img.onerror=(ev)=>{
+      reject(new Error('SVG画像の読み込みに失敗しました。ブラウザがSVGのインライン描画をサポートしていない可能性があります。'));
+    };
+    img.src=dataUrl;
+  });
+}
+
+async function savePNG(){
+  if(!nodes.length&&!areas.length){alert('まだ何も配置されていません');return;}
+  try{
+    const{canvas}=await renderToCanvas(2);
+    const dataUrl=canvas.toDataURL('image/png');
+    const a=document.createElement('a');
+    a.download='genogram.png';
+    a.href=dataUrl;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }catch(e){
+    console.error(e);
+    alert('PNG保存に失敗しました。\n'+e.message);
+  }
+}
+
+async function savePDF(){
+  if(!nodes.length&&!areas.length){alert('まだ何も配置されていません');return;}
+  try{
+    const{canvas,b}=await renderToCanvas(2);
+    const{jsPDF}=window.jspdf;
+    if(!jsPDF){alert('jsPDFが読み込まれていません。インターネット接続を確認してください。');return;}
+    const mmW=b.w*0.264583,mmH=b.h*0.264583;
+    const orient=mmW>mmH?'l':'p';
+    const pdf=new jsPDF({orientation:orient,unit:'mm',format:'a4'});
+    const pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight();
+    const margin=10;
+    const sc=Math.min((pw-margin*2)/mmW,(ph-margin*2)/mmH,1);
+    const fw=mmW*sc,fh=mmH*sc;
+    const ox=(pw-fw)/2,oy=(ph-fh)/2;
+    const pngData=canvas.toDataURL('image/png');
+    pdf.addImage(pngData,'PNG',ox,oy,fw,fh);
+    pdf.save('genogram.pdf');
+  }catch(e){
+    console.error(e);
+    alert('PDF保存に失敗しました。\n'+e.message);
+  }
+}
+
+
+// ════════════════════════════════════════════
+// TAB SWITCH
+// ════════════════════════════════════════════
+function switchTab(tab){
+  document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('on',i===(tab==='geno'?0:1)));
+  document.getElementById('page-geno').classList.toggle('on',tab==='geno');
+  document.getElementById('page-fp').classList.toggle('on',tab==='fp');
+  // ジェノグラムのヘッダーは見取り図タブでは非表示
+  document.getElementById('hdr').style.display=tab==='geno'?'':'none';
+  document.getElementById('float-sel').style.display=tab==='geno'?'':'none';
+  document.getElementById('sb').style.display=tab==='geno'?'':'none';
+  document.getElementById('fp-sb').style.display=tab==='fp'?'':'none';
+}
+
+// ════════════════════════════════════════════
+// FLOOR PLAN STATE
+// ════════════════════════════════════════════
+const fpcv = document.getElementById('fp-cv');
+const GRID = 20; // snap grid px
+let fpSnapOn = true; // グリッドスナップON/OFF
+let fpHoverInfo = null; // hover状態
+let fpLinePreview = null; // 線プレビュー用マウス位置
+
+let fpTool = 'sel';
+let fpRooms = [];   // {id,type,x,y,w,h,label}
+let fpSyms  = [];   // {id,type,x,y,w,h,rot}
+let fpLines = [];   // {id,type,x1,y1,x2,y2}
+let fpTexts = [];   // {id,x,y,text}
+let fpSel   = null; // {kind,ref}
+let fpHist  = [];
+const FP_HMAX = 50;
+let fpDrag  = null; // {kind,ref,ox,oy,edge?}
+let fpLineDraw = null; // {x0,y0}
+let fpStickyDrag = null;
+
+// Room definitions
+const ROOM_DEF = {
+  'room-j':{label:'和室', fill:'#f5f0e0', stroke:'#8a7a50', hatch:true},
+  'room-y':{label:'洋室', fill:'#eef2f8', stroke:'#4a6090'},
+  'room-h':{label:'廊下', fill:'#f0ede6', stroke:'#908880'},
+  'room-e':{label:'玄関', fill:'#e8f0e0', stroke:'#508040'},
+  'room-b':{label:'浴室', fill:'#e0ecf8', stroke:'#3060a0'},
+  'room-t':{label:'トイレ',fill:'#f0e8f8', stroke:'#7040a0'},
+  'room-k':{label:'台所', fill:'#fff0e0', stroke:'#a06020'},
+  'room-s':{label:'階段', fill:'#f0f0f0', stroke:'#606060'},
+  'room-c':{label:'押入れ',fill:'#ece8e0', stroke:'#706050'},
+  'room-x':{label:'その他',fill:'#f5f5f5', stroke:'#888888'},
+};
+
+// ── snap ──
+function fpSnap(v){return fpSnapOn?Math.round(v/GRID)*GRID:v;}
+function fpSnapPos(p){return{x:fpSnap(p.x),y:fpSnap(p.y)};}
+function fpToggleSnap(){
+  fpSnapOn=!fpSnapOn;
+  const b=document.getElementById('fbt-snap');
+  b.textContent=fpSnapOn?'⊞ スナップON':'⊟ スナップOFF';
+  b.style.background=fpSnapOn?'#e3f5ed':'var(--sur2)';
+  b.style.color=fpSnapOn?'#1a7a56':'var(--tx2)';
+  b.style.borderColor=fpSnapOn?'#1a7a56':'var(--bd2)';
+}
+
+// ── history ──
+function fpSnap_(){
+  const s=JSON.stringify({fpRooms,fpSyms,fpLines,fpTexts});
+  if(fpHist.length&&fpHist[fpHist.length-1]===s)return;
+  fpHist.push(s);if(fpHist.length>FP_HMAX)fpHist.shift();
+  document.getElementById('fbt-undo').disabled=false;
+}
+function fpUndo(){
+  if(!fpHist.length)return;
+  const s=JSON.parse(fpHist.pop());
+  fpRooms=s.fpRooms;fpSyms=s.fpSyms;fpLines=s.fpLines;fpTexts=s.fpTexts;
+  fpSel=null;fpRender();
+  document.getElementById('fbt-undo').disabled=fpHist.length===0;
+}
+function fpClearAll(){
+  if(!confirm('見取り図をすべて削除しますか？'))return;
+  fpSnap_();fpRooms=[];fpSyms=[];fpLines=[];fpTexts=[];fpSel=null;fpRender();
+}
+
+// ── tool ──
+function fpSetTool(t){
+  fpTool=t;fpLineDraw=null;
+  document.querySelectorAll('#fp-toolbar button[id^="fbt-"]').forEach(b=>b.classList.remove('on'));
+  const b=document.getElementById('fbt-'+t);if(b)b.classList.add('on');
+
+  const msgs={
+    sel:'✥ 移動・選択モード ─ 家具/部屋をドラッグで移動 | 選択後 右下⤡=リサイズ | 右上↻=回転 | ダブルクリック=名前変更 | Delete=削除',
+    line:'実線 — 始点クリック → 終点クリック | Escでキャンセル',
+    dash:'破線 — 始点クリック → 終点クリック | Escでキャンセル',
+    text:'💬 クリックした場所にコメント追加',
+  };
+  const def=ROOM_DEF[t];
+  fpSetSb(def?`${def.label}をドラッグして配置`:(msgs[t]||t+' モード'));
+}
+function fpSetSb(m){document.getElementById('fp-sb').textContent=m;}
+
+// ── coords ──
+function fpGp(e){
+  const r=fpcv.getBoundingClientRect();
+  const x=e.clientX-r.left,y=e.clientY-r.top;
+  return{x,y};
+}
+function fpNorm(e){
+  if(e.touches||e.changedTouches){
+    const t=(e.touches&&e.touches[0])||(e.changedTouches&&e.changedTouches[0]);
+    return{clientX:t.clientX,clientY:t.clientY,_touch:true,preventDefault:()=>e.preventDefault()};
+  }return e;
+}
+
+// ── hit detection ──
+function fpRoomAt(x,y){
+  for(let i=fpRooms.length-1;i>=0;i--){
+    const r=fpRooms[i];
+    if(x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h)return r;
+  }return null;
+}
+function fpSymAt(x,y){
+  for(let i=fpSyms.length-1;i>=0;i--){
+    const s=fpSyms[i];
+    if(x>=s.x&&x<=s.x+s.w&&y>=s.y&&y<=s.y+s.h)return s;
+  }return null;
+}
+function fpLineAt(x,y){
+  for(let i=fpLines.length-1;i>=0;i--){
+    const l=fpLines[i];
+    // 線からの距離
+    const dx=l.x2-l.x1,dy=l.y2-l.y1,len=Math.hypot(dx,dy);
+    if(len<1)continue;
+    const t=((x-l.x1)*dx+(y-l.y1)*dy)/(len*len);
+    const tc=Math.max(0,Math.min(1,t));
+    const dist=Math.hypot(x-(l.x1+tc*dx),y-(l.y1+tc*dy));
+    if(dist<10)return l;
+  }return null;
+}
+// resize handle (bottom-right corner)
+function fpIsResize(item,x,y){
+  const hx=item.x+item.w,hy=item.y+item.h;
+  return Math.hypot(x-hx,y-hy)<16;
+}
+// rotate handle (for syms, top-right)
+function fpIsRotate(s,x,y){
+  return Math.hypot(x-(s.x+s.w),y-s.y)<14;
+}
+
+let fpNid=1;
+let fpClipboard=null; // コピーしたオブジェクト
+
+// ── events ──
+// PC向け：キーボードショートカット
+document.addEventListener('keydown',ev=>{
+  if(document.getElementById('page-fp').classList.contains('on')){
+    const tag=(ev.target||{}).tagName||'';
+    if(tag==='INPUT'||tag==='TEXTAREA')return;
+    if(ev.key==='Delete'||ev.key==='Backspace'){
+      ev.preventDefault();fpDelSel();
+    }
+    if((ev.ctrlKey||ev.metaKey)&&ev.key==='z'){ev.preventDefault();fpUndo();}
+    if(ev.key==='Escape'){fpLineDraw=null;fpLinePreview=null;fpRender();}
+    if((ev.ctrlKey||ev.metaKey)&&ev.key==='c'){ev.preventDefault();fpCopy();}
+    if((ev.ctrlKey||ev.metaKey)&&ev.key==='v'){ev.preventDefault();fpPaste();}
+    if((ev.ctrlKey||ev.metaKey)&&ev.key==='d'){ev.preventDefault();fpCopy();fpPaste();}
+  }
+});
+
+// ホバーカーソル変化
+fpcv.addEventListener('mousemove',ev=>{
+  if(fpDrag)return;
+  if(fpTool!=='sel'){fpcv.style.cursor='crosshair';return;}
+  const p=fpGp(ev);
+  const hr=fpRoomAt(p.x,p.y);
+  const hs=fpSymAt(p.x,p.y);
+  const hl=fpLineAt(p.x,p.y);
+  if(hr){
+    fpcv.style.cursor=fpIsResize(hr,p.x,p.y)?'se-resize':'move';
+  }else if(hs){
+    const hrotX=hs.x+hs.w,hrotY=hs.y;
+    if(Math.hypot(p.x-hrotX,p.y-hrotY)<14)fpcv.style.cursor='grab';
+    else if(fpIsResize(hs,p.x,p.y))fpcv.style.cursor='se-resize';
+    else fpcv.style.cursor='move';
+  }else if(hl){
+    // 端点に近い？
+    if(Math.hypot(p.x-hl.x1,p.y-hl.y1)<10||Math.hypot(p.x-hl.x2,p.y-hl.y2)<10)
+      fpcv.style.cursor='crosshair';
+    else fpcv.style.cursor='move';
+  }else{
+    fpcv.style.cursor='default';
+  }
+  // 線引き中のプレビュー更新
+  if(fpLineDraw){
+    fpLinePreview={x:fpSnap(p.x),y:fpSnap(p.y)};
+    fpRender();
+  }
+});
+
+fpcv.addEventListener('mousedown',fpDown,{passive:false});
+window.addEventListener('mousemove',fpMove,{passive:false});
+window.addEventListener('mouseup',fpUp,{passive:false});
+fpcv.addEventListener('touchstart',e=>{e.preventDefault();fpDown(fpNorm(e));},{passive:false});
+
+// ダブルクリックで名前編集
+fpcv.addEventListener('dblclick',ev=>{
+  const p=fpGp(ev);
+  const hr=fpRoomAt(p.x,p.y);
+  const hs=fpSymAt(p.x,p.y);
+  if(hr){
+    const name=prompt('部屋名を変更',hr.label);
+    if(name!==null){fpSnap_();hr.label=name.trim()||hr.label;fpRender();}
+  }else if(hs){
+    const name=prompt('ラベルを変更',hs.label||'');
+    if(name!==null){fpSnap_();hs.label=name.trim();fpRender();}
+  }
+});
+
+// 右クリックメニュー
+fpcv.addEventListener('contextmenu',ev=>{
+  ev.preventDefault();
+  const p=fpGp(ev);
+  const hr=fpRoomAt(p.x,p.y);
+  const hs=fpSymAt(p.x,p.y);
+  const hl=fpLineAt(p.x,p.y);
+  const target=hr||hs||hl;
+  if(!target)return;
+  if(hr)fpSel={kind:'room',ref:hr};
+  else if(hs)fpSel={kind:'sym',ref:hs};
+  else if(hl)fpSel={kind:'line',ref:hl};
+  // 簡易メニュー
+  const menu=document.createElement('div');
+  menu.style.cssText=`position:fixed;left:${ev.clientX}px;top:${ev.clientY}px;background:#fff;border:1px solid #ccc;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.15);z-index:9999;min-width:100px;font-size:12px;font-family:inherit`;
+  const items=[];
+  if(hr||hs) items.push(['名前を変更',()=>{
+    const cur=hr?hr.label:(hs.label||'');
+    const name=prompt('名前を変更',cur);
+    if(name!==null){fpSnap_();if(hr)hr.label=name.trim()||hr.label;else hs.label=name.trim();fpRender();}
+  }]);
+  items.push(['コピー (Ctrl+C)',()=>{fpCopy();}]);
+  items.push(['ここに貼り付け (Ctrl+V)',()=>{fpPaste();}]);
+  items.push(['その場で複製 (Ctrl+D)',()=>{fpCopy();fpPaste();}]);
+  items.push(['削除 (Delete)',()=>{fpDelSel();}]);
+  items.forEach(([label,fn])=>{
+    const item=document.createElement('div');
+    item.style.cssText='padding:7px 14px;cursor:pointer';
+    item.textContent=label;
+    item.addEventListener('mouseenter',()=>item.style.background='#f0f0f0');
+    item.addEventListener('mouseleave',()=>item.style.background='');
+    item.addEventListener('click',()=>{fn();document.body.removeChild(menu);});
+    menu.appendChild(item);
+  });
+  document.body.appendChild(menu);
+  const close=()=>{ if(document.body.contains(menu))document.body.removeChild(menu); document.removeEventListener('click',close); };
+  setTimeout(()=>document.addEventListener('click',close),10);
+});
+window.addEventListener('touchmove',e=>{
+  if(!fpDrag&&!fpLineDraw&&!fpStickyDrag)return;
+  e.preventDefault();fpMove(fpNorm(e));
+},{passive:false});
+window.addEventListener('touchend',e=>{fpUp(fpNorm(e));},{passive:false});
+
+function fpDown(e){
+  if(!e._touch&&e.button!==0)return;
+  e.preventDefault&&e.preventDefault();
+  const p=fpGp(e);
+  const sp=fpSnapPos(p);
+  const hr=fpRoomAt(p.x,p.y);
+  const hs=fpSymAt(p.x,p.y);
+  const hl=fpLineAt(p.x,p.y);
+
+  // ── 選択・移動 ──
+  if(fpTool==='sel'){
+    // 優先順: 設備 > 線 > 部屋（設備は常に部屋の上に重なる）
+    if(hs){
+      const rot=hs.rot||0;
+      const hcx=hs.x+hs.w,hcy=hs.y; // 回転ハンドル位置（右上）
+      if(Math.hypot(p.x-hcx,p.y-hcy)<14){
+        // 回転モード: 設備中心と現在角度を保存
+        const scx=hs.x+hs.w/2,scy=hs.y+hs.h/2;
+        const startAngle=Math.atan2(p.y-scy,p.x-scx)*180/Math.PI;
+        fpDrag={kind:'sym-rot',ref:hs,startAngle,initRot:rot,cx:scx,cy:scy};
+        fpSel={kind:'sym',ref:hs};
+      }else if(fpIsResize(hs,p.x,p.y)){
+        fpDrag={kind:'sym-resize',ref:hs,ox:p.x-(hs.x+hs.w),oy:p.y-(hs.y+hs.h)};
+        fpSel={kind:'sym',ref:hs};
+      }else{
+        fpDrag={kind:'sym',ref:hs,ox:p.x-hs.x,oy:p.y-hs.y};
+        fpSel={kind:'sym',ref:hs};
+      }
+    }else if(hl){
+      if(Math.hypot(p.x-hl.x1,p.y-hl.y1)<12)
+        fpDrag={kind:'line-p1',ref:hl};
+      else if(Math.hypot(p.x-hl.x2,p.y-hl.y2)<12)
+        fpDrag={kind:'line-p2',ref:hl};
+      else
+        fpDrag={kind:'line',ref:hl,ox:p.x-hl.x1,oy:p.y-hl.y1};
+      fpSel={kind:'line',ref:hl};
+    }else if(hr){
+      if(fpIsResize(hr,p.x,p.y))fpDrag={kind:'room-resize',ref:hr,ox:p.x-(hr.x+hr.w),oy:p.y-(hr.y+hr.h)};
+      else fpDrag={kind:'room',ref:hr,ox:p.x-hr.x,oy:p.y-hr.y};
+      fpSel={kind:'room',ref:hr};
+    }else{fpSel=null;}
+    fpRender();return;
+  }
+
+  // ── 部屋配置（ドラッグで描く） ──
+  if(ROOM_DEF[fpTool]){
+    fpDrag={kind:'new-room',type:fpTool,x0:sp.x,y0:sp.y};
+    return;
+  }
+
+  // ── 記号配置（タップで即配置） ──
+  if(fpTool.startsWith('sym-')){
+    fpSnap_();
+    const def=fpSymDef(fpTool);
+    const slbl={'sym-bed':'ベッド','sym-desk':'机','sym-door':'ドア','sym-door2':'引き戸','sym-win':'窓','sym-genkan':'框','sym-step':'段差'};
+    fpSyms.push({id:fpNid++,type:fpTool,x:sp.x-def.w/2,y:sp.y-def.h/2,w:def.w,h:def.h,rot:0,label:slbl[fpTool]||''});
+    fpRender();return;
+  }
+
+  // ── 線（2クリック） ──
+  if(fpTool==='line'||fpTool==='dash'){
+    if(!fpLineDraw){fpLineDraw={x0:sp.x,y0:sp.y};fpSetSb('終点をタップ');}
+    else{
+      if(Math.hypot(sp.x-fpLineDraw.x0,sp.y-fpLineDraw.y0)>8){
+        fpSnap_();
+        fpLines.push({id:fpNid++,type:fpTool,x1:fpLineDraw.x0,y1:fpLineDraw.y0,x2:sp.x,y2:sp.y});
+      }
+      fpLineDraw=null;
+      fpSetSb(fpTool==='line'?'実線 — タップ→タップで引く':'破線 — タップ→タップで引く');
+      fpRender();
+    }return;
+  }
+
+  // ── コメント ──
+  if(fpTool==='text'){
+    const text=prompt('コメントを入力','');
+    if(text&&text.trim()){fpSnap_();fpTexts.push({id:fpNid++,x:p.x,y:p.y,text:text.trim()});fpRenderStickies();}
+    return;
+  }
+}
+
+function fpMove(e){
+  if(!fpDrag)return;
+  const p=fpGp(e);const sp=fpSnapPos(p);
+  if(fpDrag.kind==='room'){
+    fpDrag.ref.x=fpSnap(p.x-fpDrag.ox);fpDrag.ref.y=fpSnap(p.y-fpDrag.oy);
+  }else if(fpDrag.kind==='room-resize'){
+    fpDrag.ref.w=Math.max(GRID*2,fpSnap(p.x-fpDrag.ox-fpDrag.ref.x));
+    fpDrag.ref.h=Math.max(GRID*2,fpSnap(p.y-fpDrag.oy-fpDrag.ref.y));
+  }else if(fpDrag.kind==='sym'){
+    fpDrag.ref.x=fpSnap(p.x-fpDrag.ox);fpDrag.ref.y=fpSnap(p.y-fpDrag.oy);
+  }else if(fpDrag.kind==='sym-resize'){
+    fpDrag.ref.w=Math.max(GRID,fpSnap(p.x-fpDrag.ox-fpDrag.ref.x));
+    fpDrag.ref.h=Math.max(GRID,fpSnap(p.y-fpDrag.oy-fpDrag.ref.y));
+  }else if(fpDrag.kind==='sym-rot'){
+    const curAngle=Math.atan2(p.y-fpDrag.cy,p.x-fpDrag.cx)*180/Math.PI;
+    let newRot=fpDrag.initRot+(curAngle-fpDrag.startAngle);
+    // 15度スナップ
+    newRot=Math.round(newRot/15)*15;
+    fpDrag.ref.rot=((newRot%360)+360)%360;
+  }else if(fpDrag.kind==='line-p1'){
+    fpDrag.ref.x1=sp.x;fpDrag.ref.y1=sp.y;
+  }else if(fpDrag.kind==='line-p2'){
+    fpDrag.ref.x2=sp.x;fpDrag.ref.y2=sp.y;
+  }else if(fpDrag.kind==='line'){
+    const ddx=fpSnap(p.x-fpDrag.ox)-fpDrag.ref.x1;
+    const ddy=fpSnap(p.y-fpDrag.oy)-fpDrag.ref.y1;
+    fpDrag.ref.x1+=ddx;fpDrag.ref.y1+=ddy;fpDrag.ref.x2+=ddx;fpDrag.ref.y2+=ddy;
+    fpDrag.ox=p.x;fpDrag.oy=p.y;
+  }else if(fpDrag.kind==='new-room'){
+    // preview
+    fpRender();
+    const x=Math.min(fpDrag.x0,sp.x),y=Math.min(fpDrag.y0,sp.y);
+    const w=Math.max(GRID,Math.abs(sp.x-fpDrag.x0)),h=Math.max(GRID,Math.abs(sp.y-fpDrag.y0));
+    const def=ROOM_DEF[fpDrag.type];
+    const pr=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    pr.setAttribute('x',x);pr.setAttribute('y',y);pr.setAttribute('width',w);pr.setAttribute('height',h);
+    pr.setAttribute('fill',def.fill);pr.setAttribute('stroke',def.stroke);pr.setAttribute('stroke-width','2');
+    pr.setAttribute('fill-opacity','.7');pr.setAttribute('pointer-events','none');
+    fpcv.appendChild(pr);
+    return;
+  }
+  fpRender();
+}
+
+function fpUp(e){
+  if(!fpDrag)return;
+  if(fpDrag.kind==='new-room'){
+    const p=fpGp(e);const sp=fpSnapPos(p);
+    const x=Math.min(fpDrag.x0,sp.x),y=Math.min(fpDrag.y0,sp.y);
+    const w=Math.max(GRID*2,Math.abs(sp.x-fpDrag.x0));
+    const h=Math.max(GRID*2,Math.abs(sp.y-fpDrag.y0));
+    fpSnap_();
+    const def=ROOM_DEF[fpDrag.type];
+    fpRooms.push({id:fpNid++,type:fpDrag.type,x,y,w,h,label:def.label});
+  }else{
+    fpSnap_();
+  }
+  fpDrag=null;fpRender();
+}
+
+function fpDelSel(){
+  if(!fpSel)return;fpSnap_();
+  if(fpSel.kind==='room')fpRooms=fpRooms.filter(r=>r.id!==fpSel.ref.id);
+  else if(fpSel.kind==='sym')fpSyms=fpSyms.filter(s=>s.id!==fpSel.ref.id);
+  else if(fpSel.kind==='line')fpLines=fpLines.filter(l=>l.id!==fpSel.ref.id);
+  fpSel=null;fpRender();
+}
+
+// ── コピー（選択中の要素をクリップボードに保存） ──
+function fpCopy(){
+  if(!fpSel)return;
+  fpClipboard=JSON.parse(JSON.stringify(fpSel)); // ディープコピー
+  fpSetSb('コピーしました ─ Ctrl+V で貼り付け / Ctrl+D で複製');
+}
+
+// ── ペースト（20pxずらして複製） ──
+function fpPaste(){
+  if(!fpClipboard)return;
+  fpSnap_();
+  const offset=20; // ずらし量（px）
+  if(fpClipboard.kind==='room'){
+    const src=fpClipboard.ref;
+    const neo={...src, id:fpNid++, x:src.x+offset, y:src.y+offset};
+    fpRooms.push(neo);
+    fpSel={kind:'room',ref:neo};
+    // 次のペーストでさらにずれるようクリップボードも更新
+    fpClipboard=JSON.parse(JSON.stringify({kind:'room',ref:neo}));
+  }else if(fpClipboard.kind==='sym'){
+    const src=fpClipboard.ref;
+    const neo={...src, id:fpNid++, x:src.x+offset, y:src.y+offset};
+    fpSyms.push(neo);
+    fpSel={kind:'sym',ref:neo};
+    fpClipboard=JSON.parse(JSON.stringify({kind:'sym',ref:neo}));
+  }else if(fpClipboard.kind==='line'){
+    const src=fpClipboard.ref;
+    const neo={...src, id:fpNid++, x1:src.x1+offset, y1:src.y1+offset, x2:src.x2+offset, y2:src.y2+offset};
+    fpLines.push(neo);
+    fpSel={kind:'line',ref:neo};
+    fpClipboard=JSON.parse(JSON.stringify({kind:'line',ref:neo}));
+  }
+  fpRender();
+}
+
+// ── 記号定義 ──
+function fpSymDef(type){
+  const defs={
+    'sym-bed'   :{w:40, h:30},
+    'sym-desk'  :{w:60, h:50},
+    'sym-door'  :{w:60, h:60},  // ドア（弧）: 幅=ドア幅, 高さ=ドア幅（正方形が理想）
+    'sym-door2' :{w:80, h:12},  // 引き戸: 横長
+    'sym-win'   :{w:80, h:16},  // 窓: 横長・薄い
+    'sym-genkan':{w:80, h:20},  // 玄関框: 横長・薄い
+    'sym-step'  :{w:20, h:16},
+  };
+  return defs[type]||{w:60,h:60};
+}
+
+// ── SVG描画 ──
+function fpRenderRoom(r){
+  const def=ROOM_DEF[r.type]||ROOM_DEF['room-x'];
+  const isSel=fpSel&&fpSel.kind==='room'&&fpSel.ref.id===r.id;
+  const sw=isSel?2.5:1.5;
+  const selR=isSel?`<rect x="${r.x-2}" y="${r.y-2}" width="${r.w+4}" height="${r.h+4}" rx="2" fill="none" stroke="#1555a0" stroke-width="2" stroke-dasharray="4 2" pointer-events="none"/>`:'';
+
+  // 和室は畳目ハッチ
+  let hatch='';
+  if(r.type==='room-j'){
+    // 縦横の薄いライン
+    for(let xx=r.x+GRID;xx<r.x+r.w;xx+=GRID)
+      hatch+=`<line x1="${xx}" y1="${r.y}" x2="${xx}" y2="${r.y+r.h}" stroke="${def.stroke}" stroke-width=".4" stroke-opacity=".5" pointer-events="none"/>`;
+    for(let yy=r.y+GRID;yy<r.y+r.h;yy+=GRID)
+      hatch+=`<line x1="${r.x}" y1="${yy}" x2="${r.x+r.w}" y2="${yy}" stroke="${def.stroke}" stroke-width=".4" stroke-opacity=".5" pointer-events="none"/>`;
+  }
+  // 階段は斜線
+  if(r.type==='room-s'){
+    for(let d=GRID;d<r.w+r.h;d+=GRID*1.5)
+      hatch+=`<line x1="${r.x+Math.max(0,d-r.h)}" y1="${r.y+Math.min(r.h,d)}" x2="${r.x+Math.min(r.w,d)}" y2="${r.y+Math.max(0,d-r.w)}" stroke="${def.stroke}" stroke-width=".6" stroke-opacity=".5" pointer-events="none"/>`;
+  }
+
+  // リサイズハンドル
+  const rh=isSel?`<circle cx="${r.x+r.w}" cy="${r.y+r.h}" r="8" fill="${def.stroke}" fill-opacity=".3" stroke="${def.stroke}" stroke-width="1" class="fp-rh" data-id="${r.id}"/><text x="${r.x+r.w}" y="${r.y+r.h+4}" text-anchor="middle" font-size="9" fill="${def.stroke}" pointer-events="none">⤡</text>`:'';
+
+  return`<g>
+  <rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" fill="${def.fill}" stroke="${def.stroke}" stroke-width="${sw}" rx="2"/>
+  ${hatch}
+  <text x="${r.x+r.w/2}" y="${r.y+r.h/2+5}" text-anchor="middle" font-size="12" font-weight="600" fill="${def.stroke}" pointer-events="none">${r.label}</text>
+  ${selR}${rh}
+  <rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" fill="transparent" class="fp-room-hit" data-id="${r.id}" style="cursor:move" pointer-events="none"/>
+</g>`;
+}
+
+function fpRenderSym(s){
+  const isSel=fpSel&&fpSel.kind==='sym'&&fpSel.ref.id===s.id;
+  const rot=s.rot||0;
+  const cx=s.x+s.w/2, cy=s.y+s.h/2;
+  const xf=rot?`transform="rotate(${rot},${cx},${cy})"`:'';
+  let inner='';
+
+  if(s.type==='sym-bed'){
+    // ベッド: 枕側（上）を薄青で表現
+    const ph=Math.round(s.h*0.35);
+    inner=`
+    <rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" rx="3" fill="#dbeeff" stroke="#3060a0" stroke-width="1.5"/>
+    <rect x="${s.x+2}" y="${s.y+2}" width="${s.w-4}" height="${ph}" rx="2" fill="#a8ccf0" stroke="none"/>
+    <text x="${cx}" y="${s.y+ph+Math.round((s.h-ph)/2)+5}" text-anchor="middle" font-size="9" fill="#3060a0" pointer-events="none">${s.label||'ベッド'}</text>`;
+
+  }else if(s.type==='sym-desk'){
+    inner=`
+    <rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" rx="2" fill="#f5edda" stroke="#806040" stroke-width="1.5"/>
+    <text x="${cx}" y="${cy+4}" text-anchor="middle" font-size="10" fill="#806040" pointer-events="none">${s.label||'机'}</text>`;
+
+  }else if(s.type==='sym-door'){
+    // 建築図面標準ドア記号:
+    //  左辺=壁（太い縦線）、下辺=ドア枠線、弧=開き軌跡
+    //  開き方向: 左蝶番、右開き（弧は左下→右上方向）
+    const r=Math.min(s.w,s.h); // 半径=ドア幅
+    inner=`
+    <line x1="${s.x}" y1="${s.y}" x2="${s.x}" y2="${s.y+r}" stroke="#222" stroke-width="3" stroke-linecap="round"/>
+    <line x1="${s.x}" y1="${s.y+r}" x2="${s.x+r}" y2="${s.y+r}" stroke="#222" stroke-width="1.5"/>
+    <path d="M ${s.x} ${s.y} A ${r} ${r} 0 0 1 ${s.x+r} ${s.y+r}"
+      fill="none" stroke="#222" stroke-width="1.5"/>
+    <text x="${s.x+r/2}" y="${s.y+r+14}" text-anchor="middle" font-size="9" fill="#444" pointer-events="none">${s.label||'ドア'}</text>`;
+
+  }else if(s.type==='sym-door2'){
+    // 引き戸: 細い枠 + 中央にスライド矢印
+    inner=`
+    <rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" fill="#f0f0f0" stroke="#444" stroke-width="2"/>
+    <rect x="${s.x+2}" y="${s.y+2}" width="${s.w*0.6}" height="${s.h-4}" fill="#dde8f5" stroke="#3060a0" stroke-width="1"/>
+    <line x1="${s.x+s.w*0.55}" y1="${cy}" x2="${s.x+s.w-4}" y2="${cy}" stroke="#3060a0" stroke-width="1.5" marker-end="url(#fp-arr)"/>
+    <text x="${cx}" y="${s.y+s.h+14}" text-anchor="middle" font-size="9" fill="#444" pointer-events="none">${s.label||'引き戸'}</text>`;
+
+  }else if(s.type==='sym-win'){
+    // 窓: 建築図面標準 — 外壁2線の間に3本線（ガラス2枚＋框）
+    const mid=s.y+s.h/2;
+    const q1=s.y+s.h*0.25, q3=s.y+s.h*0.75;
+    inner=`
+    <rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" fill="#e8f4ff" stroke="#3878a0" stroke-width="2"/>
+    <line x1="${s.x}" y1="${q1}" x2="${s.x+s.w}" y2="${q1}" stroke="#3878a0" stroke-width="1"/>
+    <line x1="${s.x}" y1="${q3}" x2="${s.x+s.w}" y2="${q3}" stroke="#3878a0" stroke-width="1"/>
+    <text x="${cx}" y="${s.y+s.h+14}" text-anchor="middle" font-size="9" fill="#3878a0" pointer-events="none">${s.label||'窓'}</text>`;
+
+  }else if(s.type==='sym-genkan'){
+    // 玄関框（上がり框）: 二重線で段差を表現
+    const mid=s.y+s.h/2;
+    inner=`
+    <rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" fill="#e8f0e0" stroke="#508040" stroke-width="2"/>
+    <line x1="${s.x+4}" y1="${mid}" x2="${s.x+s.w-4}" y2="${mid}" stroke="#508040" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <text x="${cx}" y="${s.y-4}" text-anchor="middle" font-size="9" fill="#508040" pointer-events="none">${s.label||'框'}</text>`;
+
+  }else if(s.type==='sym-step'){
+    // 段差: 背景なし・小さな▲アイコンのみ。境目に重ねて使う
+    inner=`
+    <polygon points="${cx},${s.y} ${s.x},${s.y+s.h} ${s.x+s.w},${s.y+s.h}"
+      fill="#f5c800" fill-opacity="0.92" stroke="#a08000" stroke-width="1.5"
+      stroke-linejoin="round"/>`;
+  }
+
+  // 選択ハンドル（リサイズ＋回転）
+  const selO=isSel?`
+  <rect x="${s.x-3}" y="${s.y-3}" width="${s.w+6}" height="${s.h+6}" fill="none" stroke="#1555a0" stroke-width="1.5" stroke-dasharray="3 2" rx="2" pointer-events="none"/>
+  <circle cx="${s.x+s.w}" cy="${s.y+s.h}" r="8" fill="#fff" stroke="#1555a0" stroke-width="1.5" class="fp-sym-rh" data-id="${s.id}" style="cursor:se-resize" title="リサイズ"/>
+  <text x="${s.x+s.w}" y="${s.y+s.h+4}" text-anchor="middle" font-size="9" fill="#1555a0" pointer-events="none">⤡</text>
+  <circle cx="${s.x+s.w}" cy="${s.y}" r="8" fill="#fff" stroke="#e07000" stroke-width="1.5" class="fp-sym-rot" data-id="${s.id}" style="cursor:grab" title="回転"/>
+  <text x="${s.x+s.w}" y="${s.y+4}" text-anchor="middle" font-size="10" fill="#e07000" pointer-events="none">↻</text>`:'';
+
+  return`<g ${xf}>${inner}
+  <rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" fill="transparent" class="fp-sym-hit" data-id="${s.id}" style="cursor:move" pointer-events="all"/>
+  ${selO}
+</g>`;
+}
+
+function fpRenderLine(l){
+  const isSel=fpSel&&fpSel.kind==='line'&&fpSel.ref.id===l.id;
+  const dash=l.type==='dash'?'stroke-dasharray="8 5"':'';
+  const col=isSel?'#1555a0':'#404040';
+  const sw=isSel?2.5:1.8;
+  return`<g>
+  <line x1="${l.x1}" y1="${l.y1}" x2="${l.x2}" y2="${l.y2}" stroke="transparent" stroke-width="14" class="fp-line-hit" data-id="${l.id}" style="cursor:pointer"/>
+  <line x1="${l.x1}" y1="${l.y1}" x2="${l.x2}" y2="${l.y2}" stroke="${col}" stroke-width="${sw}" ${dash} pointer-events="none"/>
+  ${isSel?`<circle cx="${l.x1}" cy="${l.y1}" r="5" fill="${col}" opacity=".4" pointer-events="none"/><circle cx="${l.x2}" cy="${l.y2}" r="5" fill="${col}" opacity=".4" pointer-events="none"/>`:''}
+</g>`;
+}
+
+function fpRender(){
+  // キャンバス自動拡張
+  const allX=[...fpRooms.map(r=>r.x+r.w),...fpSyms.map(s=>s.x+s.w),...fpLines.map(l=>Math.max(l.x1,l.x2))];
+  const allY=[...fpRooms.map(r=>r.y+r.h),...fpSyms.map(s=>s.y+s.h),...fpLines.map(l=>Math.max(l.y1,l.y2))];
+  if(allX.length){
+    const mxX=Math.max(...allX)+100,mxY=Math.max(...allY)+100;
+    if(mxX>+fpcv.getAttribute('width'))fpcv.setAttribute('width',mxX+200);
+    if(mxY>+fpcv.getAttribute('height'))fpcv.setAttribute('height',mxY+200);
+  }
+
+  fpcv.innerHTML=`<defs>
+  <marker id="fp-arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto">
+    <path d="M2 2L8 5L2 8" fill="none" stroke="#3060a0" stroke-width="2" stroke-linecap="round"/>
+  </marker>
+</defs>
+${fpRooms.map(fpRenderRoom).join('')}
+${fpLines.map(fpRenderLine).join('')}
+${fpSyms.map(fpRenderSym).join('')}
+${fpLineDraw?`
+  <circle cx="${fpLineDraw.x0}" cy="${fpLineDraw.y0}" r="6" fill="#1555a0" fill-opacity=".5" pointer-events="none"/>
+  ${fpLinePreview?`<line x1="${fpLineDraw.x0}" y1="${fpLineDraw.y0}" x2="${fpLinePreview.x}" y2="${fpLinePreview.y}" stroke="#1555a0" stroke-width="1.5" stroke-dasharray="4 3" stroke-opacity=".6" pointer-events="none"/>
+  <circle cx="${fpLinePreview.x}" cy="${fpLinePreview.y}" r="4" fill="#1555a0" fill-opacity=".4" pointer-events="none"/>`:''}
+`:''}`;
+
+  // hit handlers
+  fpcv.querySelectorAll('.fp-room-hit').forEach(el=>{
+    fpAddHit(el,ev=>{
+      if(fpTool!=='sel')return;
+      const r=fpRooms.find(r=>r.id===+el.dataset.id);if(!r)return;
+      const p=fpGp(ev);
+      if(fpIsResize(r,p.x,p.y))fpDrag={kind:'room-resize',ref:r,ox:p.x-(r.x+r.w),oy:p.y-(r.y+r.h)};
+      else fpDrag={kind:'room',ref:r,ox:p.x-r.x,oy:p.y-r.y};
+      fpSel={kind:'room',ref:r};fpRender();
+    });
+  });
+  fpcv.querySelectorAll('.fp-rh').forEach(el=>{
+    fpAddHit(el,ev=>{
+      if(fpTool!=='sel')return;
+      const r=fpRooms.find(r=>r.id===+el.dataset.id);if(!r)return;
+      const p=fpGp(ev);
+      fpDrag={kind:'room-resize',ref:r,ox:p.x-(r.x+r.w),oy:p.y-(r.y+r.h)};
+      fpSel={kind:'room',ref:r};fpRender();
+    });
+  });
+  fpcv.querySelectorAll('.fp-sym-hit').forEach(el=>{
+    fpAddHit(el,ev=>{
+      if(fpTool!=='sel')return;
+      const s=fpSyms.find(s=>s.id===+el.dataset.id);if(!s)return;
+      const p=fpGp(ev);
+      fpDrag={kind:'sym',ref:s,ox:p.x-s.x,oy:p.y-s.y};
+      fpSel={kind:'sym',ref:s};fpRender();
+    });
+  });
+  fpcv.querySelectorAll('.fp-sym-rh').forEach(el=>{
+    fpAddHit(el,ev=>{
+      if(fpTool!=='sel')return;
+      ev.stopPropagation();
+      const s=fpSyms.find(s=>s.id===+el.dataset.id);if(!s)return;
+      const p=fpGp(ev);
+      fpDrag={kind:'sym-resize',ref:s,ox:p.x-(s.x+s.w),oy:p.y-(s.y+s.h)};
+      fpSel={kind:'sym',ref:s};fpRender();
+    });
+  });
+  fpcv.querySelectorAll('.fp-sym-rot').forEach(el=>{
+    fpAddHit(el,ev=>{
+      if(fpTool!=='sel')return;
+      ev.stopPropagation();
+      const s=fpSyms.find(s=>s.id===+el.dataset.id);if(!s)return;
+      const p=fpGp(ev);
+      const scx=s.x+s.w/2,scy=s.y+s.h/2;
+      const startAngle=Math.atan2(p.y-scy,p.x-scx)*180/Math.PI;
+      fpDrag={kind:'sym-rot',ref:s,startAngle,initRot:s.rot||0,cx:scx,cy:scy};
+      fpSel={kind:'sym',ref:s};fpRender();
+    });
+  });
+  fpcv.querySelectorAll('.fp-line-hit').forEach(el=>{
+    fpAddHit(el,ev=>{
+      if(fpTool!=='sel')return;
+      const l=fpLines.find(l=>l.id===+el.dataset.id);if(!l)return;
+      const p=fpGp(ev);
+      fpDrag={kind:'line',ref:l,ox:p.x,oy:p.y};
+      fpSel={kind:'line',ref:l};fpRender();
+    });
+  });
+  fpcv.querySelectorAll('.fp-line-p1').forEach(el=>{
+    fpAddHit(el,ev=>{
+      if(fpTool!=='sel')return;
+      const l=fpLines.find(l=>l.id===+el.dataset.id);if(!l)return;
+      fpDrag={kind:'line-p1',ref:l};fpSel={kind:'line',ref:l};fpRender();
+    });
+  });
+  fpcv.querySelectorAll('.fp-line-p2').forEach(el=>{
+    fpAddHit(el,ev=>{
+      if(fpTool!=='sel')return;
+      const l=fpLines.find(l=>l.id===+el.dataset.id);if(!l)return;
+      fpDrag={kind:'line-p2',ref:l};fpSel={kind:'line',ref:l};fpRender();
+    });
+  });
+
+  fpRenderStickies();
+}
+
+function fpAddHit(el,handler){
+  el.addEventListener('mousedown',ev=>{if(ev.button!==0)return;ev.stopPropagation();handler(ev);},{passive:false});
+  el.addEventListener('touchstart',ev=>{ev.preventDefault();ev.stopPropagation();handler(fpNorm(ev));},{passive:false});
+}
+
+// ── 付箋（見取り図） ──
+// windowレベルのstickyDragは共用しないので独立管理
+window.addEventListener('mousemove',ev=>{
+  if(!fpStickyDrag)return;
+  const r=document.getElementById('fp-wrap').getBoundingClientRect();
+  fpStickyDrag.cm.x=ev.clientX-r.left-fpStickyDrag.ox;
+  fpStickyDrag.cm.y=ev.clientY-r.top-fpStickyDrag.oy;
+  fpStickyDrag.div.style.left=fpStickyDrag.cm.x+'px';
+  fpStickyDrag.div.style.top=fpStickyDrag.cm.y+'px';
+});
+window.addEventListener('touchmove',ev=>{
+  if(!fpStickyDrag)return;
+  ev.preventDefault();
+  const t=ev.touches[0];
+  const r=document.getElementById('fp-wrap').getBoundingClientRect();
+  fpStickyDrag.cm.x=t.clientX-r.left-fpStickyDrag.ox;
+  fpStickyDrag.cm.y=t.clientY-r.top-fpStickyDrag.oy;
+  fpStickyDrag.div.style.left=fpStickyDrag.cm.x+'px';
+  fpStickyDrag.div.style.top=fpStickyDrag.cm.y+'px';
+},{passive:false});
+window.addEventListener('mouseup',()=>{if(fpStickyDrag){fpSnap_();fpStickyDrag=null;}});
+window.addEventListener('touchend',()=>{if(fpStickyDrag){fpSnap_();fpStickyDrag=null;}},{passive:false});
+
+function fpRenderStickies(){
+  const wrap=document.getElementById('fp-sticky-wrap');
+  wrap.innerHTML='';
+  fpTexts.forEach(cm=>{
+    const div=document.createElement('div');
+    div.className='sticky';
+    div.style.left=cm.x+'px';div.style.top=cm.y+'px';
+    div.textContent=cm.text;
+    const del=document.createElement('button');
+    del.className='sticky-del';del.textContent='✕';
+    const onDel=ev=>{ev.stopPropagation();ev.preventDefault();fpSnap_();fpTexts=fpTexts.filter(t=>t.id!==cm.id);fpRenderStickies();};
+    del.addEventListener('click',onDel);del.addEventListener('touchstart',onDel,{passive:false});
+    div.appendChild(del);
+    let lastTap=0;
+    div.addEventListener('dblclick',ev=>{ev.stopPropagation();fpEditSticky(cm);});
+    div.addEventListener('touchend',ev=>{const now=Date.now();if(now-lastTap<350&&!fpStickyDrag){ev.stopPropagation();ev.preventDefault();fpEditSticky(cm);}lastTap=now;},{passive:false});
+    div.addEventListener('mousedown',ev=>{if(ev.button!==0)return;ev.stopPropagation();const r=document.getElementById('fp-wrap').getBoundingClientRect();fpStickyDrag={cm,div,ox:ev.clientX-r.left-cm.x,oy:ev.clientY-r.top-cm.y};});
+    div.addEventListener('touchstart',ev=>{ev.stopPropagation();const t=ev.touches[0];const r=document.getElementById('fp-wrap').getBoundingClientRect();fpStickyDrag={cm,div,ox:t.clientX-r.left-cm.x,oy:t.clientY-r.top-cm.y};},{passive:true});
+    wrap.appendChild(div);
+  });
+}
+function fpEditSticky(cm){
+  const t=prompt('コメントを編集',cm.text);if(t===null)return;
+  fpSnap_();if(t.trim()==='')fpTexts=fpTexts.filter(x=>x.id!==cm.id);else cm.text=t.trim();
+  fpRenderStickies();
+}
+
+// ── 見取り図PNG/PDF保存 ──
+function fpGetBounds(){
+  const all=[
+    ...fpRooms.map(r=>({x:r.x,y:r.y,x2:r.x+r.w,y2:r.y+r.h})),
+    ...fpSyms.map(s=>({x:s.x,y:s.y,x2:s.x+s.w+20,y2:s.y+s.h+20})),
+    ...fpLines.map(l=>({x:Math.min(l.x1,l.x2),y:Math.min(l.y1,l.y2),x2:Math.max(l.x1,l.x2),y2:Math.max(l.y1,l.y2)})),
+    ...fpTexts.map(t=>({x:t.x,y:t.y,x2:t.x+180,y2:t.y+60})),
+  ];
+  if(!all.length)return{x:0,y:0,w:600,h:400};
+  const x=Math.max(0,Math.min(...all.map(b=>b.x))-30);
+  const y=Math.max(0,Math.min(...all.map(b=>b.y))-30);
+  const x2=Math.max(...all.map(b=>b.x2))+30;
+  const y2=Math.max(...all.map(b=>b.y2))+30;
+  return{x,y,w:x2-x,h:y2-y};
+}
+
+async function fpRenderToCanvas(scale=2){
+  const b=fpGetBounds();
+  const clone=fpcv.cloneNode(true);
+  clone.querySelectorAll('.fp-room-hit,.fp-sym-hit,.fp-line-hit,.fp-rh,.fp-sym-rh').forEach(e=>e.remove());
+  // 付箋をSVGテキストとして追加
+  fpTexts.forEach(cm=>{
+    const lines=cm.text.split('\n');
+    const g=document.createElementNS('http://www.w3.org/2000/svg','g');
+    const bw=Math.min(200,Math.max(100,lines.reduce((m,l)=>Math.max(m,l.length),0)*7+16));
+    const bh=lines.length*18+10;
+    const rect=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    rect.setAttribute('x',cm.x);rect.setAttribute('y',cm.y);
+    rect.setAttribute('width',bw);rect.setAttribute('height',bh);
+    rect.setAttribute('rx','4');rect.setAttribute('fill','#fef9c3');
+    rect.setAttribute('stroke','#e6d84a');rect.setAttribute('stroke-width','1');
+    g.appendChild(rect);
+    lines.forEach((line,i)=>{
+      const t=document.createElementNS('http://www.w3.org/2000/svg','text');
+      t.setAttribute('x',cm.x+8);t.setAttribute('y',cm.y+18+i*18);
+      t.setAttribute('font-size','12');t.setAttribute('fill','#3a3000');t.setAttribute('font-family','sans-serif');
+      t.textContent=line;g.appendChild(t);
+    });
+    clone.appendChild(g);
+  });
+  // 白背景
+  const bg=document.createElementNS('http://www.w3.org/2000/svg','rect');
+  bg.setAttribute('x',b.x);bg.setAttribute('y',b.y);bg.setAttribute('width',b.w);bg.setAttribute('height',b.h);bg.setAttribute('fill','#ffffff');
+  clone.insertBefore(bg,clone.firstChild);
+  clone.setAttribute('width',b.w*scale);clone.setAttribute('height',b.h*scale);
+  clone.setAttribute('viewBox',`${b.x} ${b.y} ${b.w} ${b.h}`);
+  const svgStr=new XMLSerializer().serializeToString(clone);
+  const svgB64=btoa(unescape(encodeURIComponent(svgStr)));
+  const dataUrl='data:image/svg+xml;base64,'+svgB64;
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.onload=()=>{
+      try{
+        const canvas=document.createElement('canvas');
+        canvas.width=b.w*scale;canvas.height=b.h*scale;
+        const ctx=canvas.getContext('2d');
+        ctx.fillStyle='#ffffff';ctx.fillRect(0,0,canvas.width,canvas.height);
+        ctx.drawImage(img,0,0);resolve({canvas,b});
+      }catch(err){reject(err);}
+    };
+    img.onerror=()=>reject(new Error('SVG画像の読み込みに失敗しました'));
+    img.src=dataUrl;
+  });
+}
+async function fpSavePNG(){
+  if(!fpRooms.length&&!fpSyms.length&&!fpLines.length&&!fpTexts.length){alert('まだ何も配置されていません');return;}
+  try{
+    const{canvas}=await fpRenderToCanvas(2);
+    const a=document.createElement('a');a.download='floorplan.png';a.href=canvas.toDataURL('image/png');
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+  }catch(e){alert('PNG保存失敗: '+e.message);}
+}
+async function fpSavePDF(){
+  if(!fpRooms.length&&!fpSyms.length&&!fpLines.length&&!fpTexts.length){alert('まだ何も配置されていません');return;}
+  try{
+    const{canvas,b}=await fpRenderToCanvas(2);
+    const{jsPDF}=window.jspdf;
+    const mmW=b.w*.264583,mmH=b.h*.264583;
+    const orient=mmW>mmH?'l':'p';
+    const pdf=new jsPDF({orientation:orient,unit:'mm',format:'a4'});
+    const pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight();
+    const margin=10,sc=Math.min((pw-margin*2)/mmW,(ph-margin*2)/mmH,1);
+    const fw=mmW*sc,fh=mmH*sc,ox=(pw-fw)/2,oy=(ph-fh)/2;
+    pdf.addImage(canvas.toDataURL('image/png'),'PNG',ox,oy,fw,fh);
+    pdf.save('floorplan.pdf');
+  }catch(e){alert('PDF保存失敗: '+e.message);}
+}
+
+// ════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════
+setTool('sel');
+switchTab('geno');
+fpSetTool('sel');
+
+</script>
+</body>
+</html>
