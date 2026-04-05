@@ -163,6 +163,12 @@ button.gn{border-color:var(--bd2);color:var(--tx2)}
 </head>
 <body>
 
+<!-- タブバーを最上部に固定 -->
+<div id="tab-bar">
+  <button class="tab-btn on" onclick="switchTab('geno')">📋 ジェノグラム</button>
+  <button class="tab-btn" onclick="switchTab('fp')">🏠 住宅見取り図</button>
+</div>
+
 <div id="hdr">
   <h1>📋 ジェノグラム</h1>
   <div class="sep"></div>
@@ -222,11 +228,6 @@ button.gn{border-color:var(--bd2);color:var(--tx2)}
   </div>
 </div>
 
-<!-- タブバー -->
-<div id="tab-bar">
-  <button class="tab-btn on" onclick="switchTab('geno')">📋 ジェノグラム</button>
-  <button class="tab-btn" onclick="switchTab('fp')">🏠 住宅見取り図</button>
-</div>
 
 <!-- ジェノグラムページ -->
 <div id="page-geno" class="page on">
