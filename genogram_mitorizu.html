@@ -501,6 +501,23 @@ function onDown(e){
   e.preventDefault&&e.preventDefault();
   const p=gp(e),hn=nodeAt(p.x,p.y),ha=areaAt(p.x,p.y),hc=coupleAt(p.x,p.y);
 
+  // ══ 改善1: どのツールでも既存要素のドラッグ移動を可能にする ══
+  // 「人物配置」「線引き(stepの1手目待ち)」「同居」「コメント」ツール中でも、
+  // 既存ノードや同居囲みの上でmousedownしたら移動モードに入る
+  if(tool!=='sel' && !step){
+    if(hn){
+      drag={kind:'node',ref:hn,ox:p.x-hn.x,oy:p.y-hn.y};
+      selItem({kind:'node',ref:hn});
+      return;
+    }
+    if(ha){
+      if(isRH(ha,p.x,p.y))drag={kind:'ar',ref:ha,ox:p.x-(ha.x+ha.w),oy:p.y-(ha.y+ha.h)};
+      else drag={kind:'area',ref:ha,ox:p.x-ha.x,oy:p.y-ha.y};
+      selItem({kind:'area',ref:ha});
+      return;
+    }
+  }
+
   // ── Select / Move ──
   if(tool==='sel'){
     if(hn){drag={kind:'node',ref:hn,ox:p.x-hn.x,oy:p.y-hn.y};selItem({kind:'node',ref:hn});}
@@ -888,8 +905,10 @@ ${nodes.map(rNode).join('')}`;
     addHit(el, ev=>{
       const n=nodes.find(n=>n.id===+el.dataset.id);if(!n)return;
       const p=gp(ev);
-      if(tool==='sel'){drag={kind:'node',ref:n,ox:p.x-n.x,oy:p.y-n.y};selItem({kind:'node',ref:n});}
-      else if(['marriage','sep','divorced','common'].includes(tool)){
+      // ══ 改善1: selモードまたは「配置系ツールで線引きstep中でない」なら移動開始 ══
+      if(tool==='sel'||((['male','female','unk','hh','comment'].includes(tool))&&!step)){
+        drag={kind:'node',ref:n,ox:p.x-n.x,oy:p.y-n.y};selItem({kind:'node',ref:n});
+      }else if(['marriage','sep','divorced','common'].includes(tool)){
         if(!step){step={t:tool,n1:n};setSb('2人目をタップ');render();}
         else{if(step.n1.id!==n.id){snap();couples.push({id:nid++,type:tool,n1:step.n1.id,n2:n.id});}step=null;setSb(MSGS[tool]);render();}
       }else if(['child','adopted'].includes(tool)){
@@ -912,10 +931,10 @@ ${nodes.map(rNode).join('')}`;
     });
   });
 
-  // area hits
+  // area hits — 改善1: 同居囲みもどのツールでも移動可能
   cv.querySelectorAll('.ht-area').forEach(el=>{
     addHit(el, ev=>{
-      if(tool!=='sel')return;
+      if(tool!=='sel'&&!(['male','female','unk','hh','comment'].includes(tool)&&!step))return;
       const a=areas.find(a=>a.id===+el.dataset.id);if(!a)return;
       const p=gp(ev);drag={kind:'area',ref:a,ox:p.x-a.x,oy:p.y-a.y};selItem({kind:'area',ref:a});
     });
@@ -1095,17 +1114,55 @@ async function renderToCanvas(scale=2){
   });
 }
 
+// ════════════════════════════════════════════
+// 改善3: File System Access APIで保存フロー改善
+// ════════════════════════════════════════════
+// 日付付きファイル名を自動生成
+function autoFileName(prefix,ext){
+  const d=new Date();
+  const ds=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+  return`${prefix}_${ds}.${ext}`;
+}
+
+// File System Access API対応: 毎回同じフォルダに保存
+let savedDirHandle=null; // フォルダハンドルを記憶
+
+async function smartSavePNG(prefix,canvas){
+  const blob=await new Promise(r=>canvas.toBlob(r,'image/png'));
+  const fname=autoFileName(prefix,'png');
+
+  // File System Access APIが使えるか
+  if(window.showSaveFilePicker){
+    try{
+      const handle=await window.showSaveFilePicker({
+        id:'genogram-save', // IDでフォルダを記憶
+        suggestedName:fname,
+        types:[{description:'PNG画像',accept:{'image/png':['.png']}}]
+      });
+      const writable=await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      setSb('✅ 保存しました: '+handle.name);
+      return;
+    }catch(err){
+      if(err.name==='AbortError')return; // ユーザーがキャンセル
+      // フォールバック
+    }
+  }
+  // フォールバック: 従来のダウンロード
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.download=fname;a.href=url;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  setSb('📷 ダウンロードしました: '+fname);
+}
+
 async function savePNG(){
   if(!nodes.length&&!areas.length){alert('まだ何も配置されていません');return;}
   try{
     const{canvas}=await renderToCanvas(2);
-    const dataUrl=canvas.toDataURL('image/png');
-    const a=document.createElement('a');
-    a.download='genogram.png';
-    a.href=dataUrl;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    await smartSavePNG('ジェノグラム',canvas);
   }catch(e){
     console.error(e);
     alert('PNG保存に失敗しました。\n'+e.message);
@@ -1128,7 +1185,7 @@ async function savePDF(){
     const ox=(pw-fw)/2,oy=(ph-fh)/2;
     const pngData=canvas.toDataURL('image/png');
     pdf.addImage(pngData,'PNG',ox,oy,fw,fh);
-    pdf.save('genogram.pdf');
+    pdf.save(autoFileName('ジェノグラム','pdf'));
   }catch(e){
     console.error(e);
     alert('PDF保存に失敗しました。\n'+e.message);
@@ -1943,8 +2000,7 @@ async function fpSavePNG(){
   if(!fpRooms.length&&!fpSyms.length&&!fpLines.length&&!fpTexts.length){alert('まだ何も配置されていません');return;}
   try{
     const{canvas}=await fpRenderToCanvas(2);
-    const a=document.createElement('a');a.download='floorplan.png';a.href=canvas.toDataURL('image/png');
-    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    await smartSavePNG('住宅見取り図',canvas);
   }catch(e){alert('PNG保存失敗: '+e.message);}
 }
 async function fpSavePDF(){
@@ -1959,9 +2015,56 @@ async function fpSavePDF(){
     const margin=10,sc=Math.min((pw-margin*2)/mmW,(ph-margin*2)/mmH,1);
     const fw=mmW*sc,fh=mmH*sc,ox=(pw-fw)/2,oy=(ph-fh)/2;
     pdf.addImage(canvas.toDataURL('image/png'),'PNG',ox,oy,fw,fh);
-    pdf.save('floorplan.pdf');
+    pdf.save(autoFileName('住宅見取り図','pdf'));
   }catch(e){alert('PDF保存失敗: '+e.message);}
 }
+
+// ════════════════════════════════════════════
+// 改善2: ツールバーからドラッグ&ドロップで人物を配置
+// ════════════════════════════════════════════
+(function(){
+  const DRAG_TYPES=['male','female','unk'];
+  let dndState=null; // {type, ghost}
+
+  // ツールバーのボタンにdragstart設定
+  DRAG_TYPES.forEach(t=>{
+    const btn=document.getElementById('btn-'+t);
+    if(!btn)return;
+    btn.setAttribute('draggable','true');
+    btn.addEventListener('dragstart',ev=>{
+      ev.dataTransfer.setData('text/plain',t);
+      ev.dataTransfer.effectAllowed='copy';
+      // ゴーストアイコン
+      const ghost=document.createElement('div');
+      ghost.style.cssText='position:absolute;top:-100px;left:-100px;width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;pointer-events:none;';
+      if(t==='male'){ghost.style.background='#e3f5ed';ghost.style.border='2px solid #1a7a56';ghost.textContent='□';}
+      else if(t==='female'){ghost.style.background='#e3f5ed';ghost.style.border='2px solid #1a7a56';ghost.textContent='○';}
+      else{ghost.style.background='#e3f5ed';ghost.style.border='2px solid #1a7a56';ghost.textContent='△';}
+      document.body.appendChild(ghost);
+      ev.dataTransfer.setDragImage(ghost,26,26);
+      dndState={type:t,ghost};
+    });
+    btn.addEventListener('dragend',()=>{
+      if(dndState&&dndState.ghost)dndState.ghost.remove();
+      dndState=null;
+    });
+  });
+
+  // キャンバスにdrop受け入れ設定
+  cv.addEventListener('dragover',ev=>{ev.preventDefault();ev.dataTransfer.dropEffect='copy';});
+  cv.addEventListener('drop',ev=>{
+    ev.preventDefault();
+    const t=ev.dataTransfer.getData('text/plain');
+    if(!DRAG_TYPES.includes(t))return;
+    const p=gp(ev);
+    snap();
+    const n={id:nid++,type:t,x:p.x,y:p.y,name:'',age:'',status:'alive',kp:false,note:''};
+    nodes.push(n);render();selItem({kind:'node',ref:n});
+    setSb('右パネルで名前・年齢を入力');
+    if(dndState&&dndState.ghost)dndState.ghost.remove();
+    dndState=null;
+  });
+})();
 
 // ════════════════════════════════════════════
 // INIT
