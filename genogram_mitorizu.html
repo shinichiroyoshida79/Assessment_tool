@@ -1460,6 +1460,35 @@ function fpDown(e){
   const hs=fpSymAt(p.x,p.y);
   const hl=fpLineAt(p.x,p.y);
 
+  // ── 非選択ツール時でも、既存要素の上をクリックしたら移動できる ──
+  // （選択ボタンを押さずに移動できる利便性）
+  if(fpTool!=='sel' && (hs||hl||hr)){
+    if(hs){
+      const rot=hs.rot||0;
+      const hcx=hs.x+hs.w,hcy=hs.y;
+      if(Math.hypot(p.x-hcx,p.y-hcy)<14){
+        const scx=hs.x+hs.w/2,scy=hs.y+hs.h/2;
+        const startAngle=Math.atan2(p.y-scy,p.x-scx)*180/Math.PI;
+        fpDrag={kind:'sym-rot',ref:hs,startAngle,initRot:rot,cx:scx,cy:scy};
+      }else if(fpIsResize(hs,p.x,p.y)){
+        fpDrag={kind:'sym-resize',ref:hs,ox:p.x-(hs.x+hs.w),oy:p.y-(hs.y+hs.h)};
+      }else{
+        fpDrag={kind:'sym',ref:hs,ox:p.x-hs.x,oy:p.y-hs.y};
+      }
+      fpSel={kind:'sym',ref:hs};
+    }else if(hl){
+      if(Math.hypot(p.x-hl.x1,p.y-hl.y1)<12) fpDrag={kind:'line-p1',ref:hl};
+      else if(Math.hypot(p.x-hl.x2,p.y-hl.y2)<12) fpDrag={kind:'line-p2',ref:hl};
+      else fpDrag={kind:'line',ref:hl,ox:p.x-hl.x1,oy:p.y-hl.y1};
+      fpSel={kind:'line',ref:hl};
+    }else if(hr){
+      if(fpIsResize(hr,p.x,p.y)) fpDrag={kind:'room-resize',ref:hr,ox:p.x-(hr.x+hr.w),oy:p.y-(hr.y+hr.h)};
+      else fpDrag={kind:'room',ref:hr,ox:p.x-hr.x,oy:p.y-hr.y};
+      fpSel={kind:'room',ref:hr};
+    }
+    fpRender();return;
+  }
+
   // ── 選択・移動 ──
   if(fpTool==='sel'){
     // 優先順: 設備 > 線 > 部屋（設備は常に部屋の上に重なる）
@@ -1506,7 +1535,22 @@ function fpDown(e){
     fpSnap_();
     const def=fpSymDef(fpTool);
     const slbl={'sym-bed':'ベッド','sym-desk':'机','sym-door':'ドア','sym-door2':'引き戸','sym-win':'窓','sym-genkan':'框','sym-step':'段差'};
-    fpSyms.push({id:fpNid++,type:fpTool,x:sp.x-def.w/2,y:sp.y-def.h/2,w:def.w,h:def.h,rot:0,label:slbl[fpTool]||''});
+    let nx=sp.x-def.w/2, ny=sp.y-def.h/2, nrot=0;
+    // 窓・引き戸・框は壁線上へスナップ（最寄りの部屋壁or線に吸着し、向きも合わせる）
+    if(fpTool==='sym-win'||fpTool==='sym-door2'||fpTool==='sym-genkan'){
+      const snap=fpNearestWall(p.x,p.y,60);
+      if(snap){
+        if(snap.orient==='h'){ // 水平壁
+          nx=fpSnap(p.x)-def.w/2; ny=snap.pos-def.h/2; nrot=0;
+        }else{ // 垂直壁
+          nx=snap.pos-def.h/2; ny=fpSnap(p.y)-def.w/2; nrot=90;
+        }
+      }
+    }
+    const neo={id:fpNid++,type:fpTool,x:nx,y:ny,w:def.w,h:def.h,rot:nrot,label:slbl[fpTool]||''};
+    fpSyms.push(neo);
+    fpSel={kind:'sym',ref:neo};
+    fpSetTool('sel'); // 配置後は自動で選択モードへ（連続クリックで複製されない）
     fpRender();return;
   }
 
@@ -1516,10 +1560,12 @@ function fpDown(e){
     else{
       if(Math.hypot(sp.x-fpLineDraw.x0,sp.y-fpLineDraw.y0)>8){
         fpSnap_();
-        fpLines.push({id:fpNid++,type:fpTool,x1:fpLineDraw.x0,y1:fpLineDraw.y0,x2:sp.x,y2:sp.y});
+        const neo={id:fpNid++,type:fpTool,x1:fpLineDraw.x0,y1:fpLineDraw.y0,x2:sp.x,y2:sp.y};
+        fpLines.push(neo);
+        fpSel={kind:'line',ref:neo};
       }
       fpLineDraw=null;
-      fpSetSb(fpTool==='line'?'実線 — タップ→タップで引く':'破線 — タップ→タップで引く');
+      fpSetTool('sel'); // 配置後は自動で選択モードへ
       fpRender();
     }return;
   }
@@ -1528,6 +1574,7 @@ function fpDown(e){
   if(fpTool==='text'){
     const text=prompt('コメントを入力','');
     if(text&&text.trim()){fpSnap_();fpTexts.push({id:fpNid++,x:p.x,y:p.y,text:text.trim()});fpRenderStickies();}
+    fpSetTool('sel'); // 配置後は自動で選択モードへ
     return;
   }
 }
@@ -1585,11 +1632,58 @@ function fpUp(e){
     const h=Math.max(GRID*2,Math.abs(sp.y-fpDrag.y0));
     fpSnap_();
     const def=ROOM_DEF[fpDrag.type];
-    fpRooms.push({id:fpNid++,type:fpDrag.type,x,y,w,h,label:def.label});
+    const neo={id:fpNid++,type:fpDrag.type,x,y,w,h,label:def.label};
+    fpRooms.push(neo);
+    fpSel={kind:'room',ref:neo};
+    fpDrag=null;
+    fpSetTool('sel'); // 配置後は自動で選択モードへ
+    fpRender();return;
   }else{
     fpSnap_();
   }
   fpDrag=null;fpRender();
+}
+
+// ── 最寄りの壁線を探索（窓・引き戸のスナップ用） ──
+// 戻り値: {orient:'h'|'v', pos:y or x} or null
+function fpNearestWall(px,py,tol){
+  tol=tol||60;
+  let best=null, bestD=tol;
+  // 部屋の四辺
+  for(const r of fpRooms){
+    const edges=[
+      {orient:'h', pos:r.y,     a:r.x, b:r.x+r.w},
+      {orient:'h', pos:r.y+r.h, a:r.x, b:r.x+r.w},
+      {orient:'v', pos:r.x,     a:r.y, b:r.y+r.h},
+      {orient:'v', pos:r.x+r.w, a:r.y, b:r.y+r.h},
+    ];
+    for(const e of edges){
+      if(e.orient==='h'){
+        if(px<e.a-10||px>e.b+10) continue;
+        const d=Math.abs(py-e.pos);
+        if(d<bestD){bestD=d; best={orient:'h',pos:e.pos};}
+      }else{
+        if(py<e.a-10||py>e.b+10) continue;
+        const d=Math.abs(px-e.pos);
+        if(d<bestD){bestD=d; best={orient:'v',pos:e.pos};}
+      }
+    }
+  }
+  // 実線/破線
+  for(const l of fpLines){
+    if(Math.abs(l.y1-l.y2)<3){ // ほぼ水平
+      const minx=Math.min(l.x1,l.x2), maxx=Math.max(l.x1,l.x2);
+      if(px<minx-10||px>maxx+10) continue;
+      const d=Math.abs(py-l.y1);
+      if(d<bestD){bestD=d; best={orient:'h',pos:l.y1};}
+    }else if(Math.abs(l.x1-l.x2)<3){ // ほぼ垂直
+      const miny=Math.min(l.y1,l.y2), maxy=Math.max(l.y1,l.y2);
+      if(py<miny-10||py>maxy+10) continue;
+      const d=Math.abs(px-l.x1);
+      if(d<bestD){bestD=d; best={orient:'v',pos:l.x1};}
+    }
+  }
+  return best;
 }
 
 function fpDelSel(){
@@ -1641,9 +1735,9 @@ function fpSymDef(type){
     'sym-bed'   :{w:40, h:30},
     'sym-desk'  :{w:60, h:50},
     'sym-door'  :{w:60, h:60},  // ドア（弧）: 幅=ドア幅, 高さ=ドア幅（正方形が理想）
-    'sym-door2' :{w:80, h:12},  // 引き戸: 横長
-    'sym-win'   :{w:80, h:16},  // 窓: 横長・薄い
-    'sym-genkan':{w:80, h:20},  // 玄関框: 横長・薄い
+    'sym-door2' :{w:80, h:6},   // 引き戸: 横長・薄い
+    'sym-win'   :{w:80, h:8},   // 窓: 横長・薄い
+    'sym-genkan':{w:80, h:10},  // 玄関框: 横長・薄い
     'sym-step'  :{w:20, h:16},
   };
   return defs[type]||{w:60,h:60};
