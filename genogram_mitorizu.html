@@ -167,6 +167,19 @@ button.gn{border-color:var(--bd2);color:var(--tx2)}
 <div id="tab-bar">
   <button class="tab-btn on" onclick="switchTab('geno')">📋 ジェノグラム</button>
   <button class="tab-btn" onclick="switchTab('fp')">🏠 住宅見取り図</button>
+  <button id="help-btn" onclick="showHelp()" title="使い方を見る"
+    style="margin-left:auto;padding:6px 14px;font-size:13px;font-weight:600;border:1px solid #1555a0;border-radius:6px;background:#e8f0fb;color:#1555a0;cursor:pointer;font-family:inherit">❓ ヘルプ</button>
+</div>
+
+<!-- ヘルプモーダル -->
+<div id="help-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);overflow-y:auto" onclick="if(event.target===this)closeHelp()">
+  <div style="background:#fff;max-width:820px;margin:40px auto 60px;border-radius:10px;box-shadow:0 8px 40px rgba(0,0,0,.3);overflow:hidden">
+    <div style="background:#1555a0;color:#fff;padding:16px 24px;display:flex;align-items:center;gap:12px">
+      <span style="font-size:20px;font-weight:700" id="help-title">📋 ジェノグラム クイックリファレンス</span>
+      <button onclick="closeHelp()" style="margin-left:auto;background:none;border:none;color:#fff;font-size:22px;cursor:pointer;line-height:1">✕</button>
+    </div>
+    <div id="help-body" style="padding:20px 28px;font-size:13px;line-height:1.7;color:#222"></div>
+  </div>
 </div>
 
 <div id="hdr">
@@ -2279,6 +2292,111 @@ async function fpSavePDF(){
 })();
 
 // ════════════════════════════════════════════
+// ════════════════════════════════════════════
+// HELP MODAL
+// ════════════════════════════════════════════
+const HELP_GENO = `
+<h2 style="color:#1555a0;margin:0 0 12px;font-size:16px">🖱 基本操作</h2>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+<tr style="background:#1555a0;color:#fff"><th style="padding:6px 10px;text-align:left">操作</th><th style="padding:6px 10px;text-align:left">内容</th></tr>
+<tr style="background:#f5f8ff"><td style="padding:5px 10px;border-bottom:1px solid #dde">クリック（配置ツール選択後）</td><td style="padding:5px 10px;border-bottom:1px solid #dde">人物・記号を配置</td></tr>
+<tr><td style="padding:5px 10px;border-bottom:1px solid #dde">既存要素をドラッグ</td><td style="padding:5px 10px;border-bottom:1px solid #dde">ツール関係なく移動できる</td></tr>
+<tr style="background:#f5f8ff"><td style="padding:5px 10px;border-bottom:1px solid #dde">ダブルクリック（人物）</td><td style="padding:5px 10px;border-bottom:1px solid #dde">名前・年齢・状態を編集</td></tr>
+<tr><td style="padding:5px 10px;border-bottom:1px solid #dde">Delete / Backspace</td><td style="padding:5px 10px;border-bottom:1px solid #dde">選択要素を削除</td></tr>
+<tr style="background:#f5f8ff"><td style="padding:5px 10px">Ctrl+Z / Cmd+Z</td><td style="padding:5px 10px">元に戻す（最大60回）</td></tr>
+</table>
+
+<h2 style="color:#1555a0;margin:0 0 12px;font-size:16px">👥 人物配置</h2>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+<tr style="background:#1555a0;color:#fff"><th style="padding:6px 10px;text-align:left">ボタン</th><th style="padding:6px 10px;text-align:left">説明</th></tr>
+<tr style="background:#f5f8ff"><td style="padding:5px 10px;border-bottom:1px solid #dde">□ 男性</td><td style="padding:5px 10px;border-bottom:1px solid #dde">四角形で男性を表す</td></tr>
+<tr><td style="padding:5px 10px;border-bottom:1px solid #dde">○ 女性</td><td style="padding:5px 10px;border-bottom:1px solid #dde">丸で女性を表す</td></tr>
+<tr style="background:#f5f8ff"><td style="padding:5px 10px">△ 不明</td><td style="padding:5px 10px">三角で性別不明を表す</td></tr>
+</table>
+
+<h2 style="color:#1555a0;margin:0 0 12px;font-size:16px">🔗 関係線</h2>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+<tr style="background:#1555a0;color:#fff"><th style="padding:6px 10px;text-align:left">線の種類</th><th style="padding:6px 10px;text-align:left">手順</th></tr>
+<tr style="background:#f5f8ff"><td style="padding:5px 10px;border-bottom:1px solid #dde">婚姻・離婚・内縁</td><td style="padding:5px 10px;border-bottom:1px solid #dde">ボタン → 1人目クリック → 2人目クリック</td></tr>
+<tr><td style="padding:5px 10px;border-bottom:1px solid #dde">親子（実子・養子）</td><td style="padding:5px 10px;border-bottom:1px solid #dde">ボタン → 婚姻線クリック → 子どもクリック</td></tr>
+<tr style="background:#f5f8ff"><td style="padding:5px 10px">感情線（親密・対立・疎遠）</td><td style="padding:5px 10px">「感情▶」展開 → ボタン → 2人を順にクリック</td></tr>
+</table>
+
+<h2 style="color:#1555a0;margin:0 0 12px;font-size:16px">💬 コメント（付箋）</h2>
+<ul style="margin:0 0 16px;padding-left:20px">
+<li>「💬 コメント」ボタン → キャンバスをクリック → 付箋が出現 → そのまま入力</li>
+<li>Enter で確定 ／ Shift+Enter で改行 ／ Esc でキャンセル</li>
+<li>ダブルクリックで再編集 ／ 右上「✕」で削除 ／ ドラッグで移動</li>
+</ul>
+
+<h2 style="color:#1555a0;margin:0 0 12px;font-size:16px">💾 保存</h2>
+<ul style="margin:0;padding-left:20px">
+<li>📷 PNG保存：高解像度PNG（ファイル名例：ジェノグラム_20260414.png）</li>
+<li>📄 PDF保存：A4 PDF。印刷・紙ファイル保管用</li>
+<li>Edge/Chromeではフォルダを記憶し、次回から同じ場所へ保存</li>
+</ul>
+`;
+
+const HELP_FP = `
+<h2 style="color:#1555a0;margin:0 0 12px;font-size:16px">🖱 基本操作</h2>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+<tr style="background:#1555a0;color:#fff"><th style="padding:6px 10px;text-align:left">操作</th><th style="padding:6px 10px;text-align:left">内容</th></tr>
+<tr style="background:#f5f8ff"><td style="padding:5px 10px;border-bottom:1px solid #dde">既存要素をドラッグ</td><td style="padding:5px 10px;border-bottom:1px solid #dde">ツール関係なくいつでも移動できる</td></tr>
+<tr><td style="padding:5px 10px;border-bottom:1px solid #dde">右下⤡ をドラッグ</td><td style="padding:5px 10px;border-bottom:1px solid #dde">サイズ変更</td></tr>
+<tr style="background:#f5f8ff"><td style="padding:5px 10px;border-bottom:1px solid #dde">右上↻ をドラッグ</td><td style="padding:5px 10px;border-bottom:1px solid #dde">回転（15°単位）</td></tr>
+<tr><td style="padding:5px 10px;border-bottom:1px solid #dde">ダブルクリック（部屋）</td><td style="padding:5px 10px;border-bottom:1px solid #dde">部屋名を編集</td></tr>
+<tr style="background:#f5f8ff"><td style="padding:5px 10px;border-bottom:1px solid #dde">Ctrl+C / V / D</td><td style="padding:5px 10px;border-bottom:1px solid #dde">コピー / 貼り付け / 複製</td></tr>
+<tr><td style="padding:5px 10px;border-bottom:1px solid #dde">Delete / Backspace</td><td style="padding:5px 10px;border-bottom:1px solid #dde">選択要素を削除</td></tr>
+<tr style="background:#f5f8ff"><td style="padding:5px 10px">Ctrl+Z / Cmd+Z</td><td style="padding:5px 10px">元に戻す（最大50回）</td></tr>
+</table>
+
+<h2 style="color:#1555a0;margin:0 0 12px;font-size:16px">🏠 部屋・設備</h2>
+<ul style="margin:0 0 16px;padding-left:20px">
+<li><b>部屋</b>：ボタン押す → キャンバスでドラッグ → 配置後は自動で選択モードへ</li>
+<li><b>設備（ベッド・机・ドアなど）</b>：ボタン押す → クリックで配置 → 自動で選択モードへ</li>
+<li><b>窓・引き戸・玄関框</b>：壁線の近く（60px以内）に配置すると自動でスナップ＆向きが揃う</li>
+</ul>
+
+<h2 style="color:#1555a0;margin:0 0 12px;font-size:16px">📐 図形</h2>
+<ul style="margin:0 0 16px;padding-left:20px">
+<li>△ 三角：斜め壁・変形部屋の表現に</li>
+<li>○ 丸：柱・円形スペースの表現に</li>
+</ul>
+
+<h2 style="color:#1555a0;margin:0 0 12px;font-size:16px">📏 線を引く</h2>
+<ul style="margin:0 0 16px;padding-left:20px">
+<li>「─ 実線」または「⋯ 破線」ボタン → キャンバスでドラッグ → 離すと確定</li>
+<li>線を選択すると両端点をドラッグで個別移動できる</li>
+</ul>
+
+<h2 style="color:#1555a0;margin:0 0 12px;font-size:16px">💬 コメント（付箋）</h2>
+<ul style="margin:0 0 16px;padding-left:20px">
+<li>「💬 コメント」ボタン → クリックで付箋出現 → そのまま入力</li>
+<li>Enter で確定 ／ Shift+Enter で改行 ／ Esc でキャンセル</li>
+<li>ダブルクリックで再編集 ／ 右上「✕」で削除</li>
+</ul>
+
+<h2 style="color:#1555a0;margin:0 0 12px;font-size:16px">💾 保存</h2>
+<ul style="margin:0;padding-left:20px">
+<li>📷 PNG：住宅見取り図_YYYYMMDD.png として保存</li>
+<li>📄 PDF：A4 PDF として保存</li>
+<li>⊞ グリッド整列：ON=20cm単位スナップ / OFF=自由配置</li>
+</ul>
+`;
+
+function showHelp(){
+  const isGeno=document.getElementById('page-geno').classList.contains('on');
+  document.getElementById('help-title').textContent=isGeno?'📋 ジェノグラム クイックリファレンス':'🏠 住宅見取り図 クイックリファレンス';
+  document.getElementById('help-body').innerHTML=isGeno?HELP_GENO:HELP_FP;
+  document.getElementById('help-modal').style.display='block';
+}
+function closeHelp(){
+  document.getElementById('help-modal').style.display='none';
+}
+document.addEventListener('keydown',ev=>{
+  if(ev.key==='Escape')closeHelp();
+});
+
 // INIT
 // ════════════════════════════════════════════
 setTool('sel');
