@@ -1024,12 +1024,14 @@ function renderStickies(){
     // ドラッグ開始（window レベルの move/up で追跡）
     div.addEventListener('mousedown',ev=>{
       if(ev.button!==0)return;
+      if(ev.target.closest('.sticky-del'))return; // 削除ボタンはスルー
       ev.stopPropagation();ev.preventDefault();
       const r=document.getElementById('cwrap').getBoundingClientRect();
       stickyDrag={cm,div,ox:ev.clientX-r.left-cm.x,oy:ev.clientY-r.top-cm.y};
       sel={kind:'comment',ref:cm};renderStickies();
     });
     div.addEventListener('touchstart',ev=>{
+      if(ev.target.closest('.sticky-del'))return; // 削除ボタンはスルー
       ev.stopPropagation();
       const t=ev.touches[0];
       const r=document.getElementById('cwrap').getBoundingClientRect();
@@ -2100,8 +2102,8 @@ function fpRenderStickies(){
     let lastTap=0;
     div.addEventListener('dblclick',ev=>{ev.stopPropagation();fpEditStickyInline(cm);});
     div.addEventListener('touchend',ev=>{const now=Date.now();if(now-lastTap<350&&!fpStickyDrag){ev.stopPropagation();ev.preventDefault();fpEditStickyInline(cm);}lastTap=now;},{passive:false});
-    div.addEventListener('mousedown',ev=>{if(ev.button!==0)return;ev.stopPropagation();const r=document.getElementById('fp-wrap').getBoundingClientRect();fpStickyDrag={cm,div,ox:ev.clientX-r.left-cm.x,oy:ev.clientY-r.top-cm.y};});
-    div.addEventListener('touchstart',ev=>{ev.stopPropagation();const t=ev.touches[0];const r=document.getElementById('fp-wrap').getBoundingClientRect();fpStickyDrag={cm,div,ox:t.clientX-r.left-cm.x,oy:t.clientY-r.top-cm.y};},{passive:true});
+    div.addEventListener('mousedown',ev=>{if(ev.button!==0)return;if(ev.target.closest('.sticky-del'))return;ev.stopPropagation();const r=document.getElementById('fp-wrap').getBoundingClientRect();fpStickyDrag={cm,div,ox:ev.clientX-r.left-cm.x,oy:ev.clientY-r.top-cm.y};});
+    div.addEventListener('touchstart',ev=>{if(ev.target.closest('.sticky-del'))return;ev.stopPropagation();const t=ev.touches[0];const r=document.getElementById('fp-wrap').getBoundingClientRect();fpStickyDrag={cm,div,ox:t.clientX-r.left-cm.x,oy:t.clientY-r.top-cm.y};},{passive:true});
     wrap.appendChild(div);
   });
 }
