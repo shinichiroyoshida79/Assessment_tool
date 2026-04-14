@@ -325,6 +325,12 @@ button.gn{border-color:var(--bd2);color:var(--tx2)}
   </div>
   <div class="tsep"></div>
   <div class="grp">
+    <span class="tlbl">図形</span>
+    <button onclick="fpSetTool('sym-tri')"    id="fbt-sym-tri" title="三角形（斜め壁など）">△ 三角</button>
+    <button onclick="fpSetTool('sym-circle')" id="fbt-sym-circle" title="丸（柱など）">○ 丸</button>
+  </div>
+  <div class="tsep"></div>
+  <div class="grp">
     <span class="tlbl">線</span>
     <button onclick="fpSetTool('line')"  id="fbt-line">─ 実線</button>
     <button onclick="fpSetTool('dash')"  id="fbt-dash">⋯ 破線</button>
@@ -576,13 +582,15 @@ function onDown(e){
   // ── Household ──
   if(tool==='hh'){hdraw={x0:p.x,y0:p.y};return;}
 
-  // ── Comment ──
+  // ── Comment（付箋をクリック位置に作り、即インライン編集） ──
   if(tool==='comment'){
-    const text=prompt('コメントを入力してください','');
-    if(text===null||text.trim()==='')return;
     snap();
-    comments.push({id:nid++,x:p.x,y:p.y,text:text.trim()});
+    const cm={id:nid++,x:p.x,y:p.y,text:''};
+    comments.push(cm);
+    sel={kind:'comment',ref:cm};
     renderStickies();
+    // 新しい付箋をinline編集モードで開く
+    setTimeout(()=>editStickyInline(cm),50);
     return;
   }
 }
@@ -986,6 +994,7 @@ function renderStickies(){
   comments.forEach(cm=>{
     const div=document.createElement('div');
     div.className='sticky'+(sel&&sel.kind==='comment'&&sel.ref.id===cm.id?' sel-sticky':'');
+    div.dataset.cmId=cm.id;
     div.style.left=cm.x+'px';
     div.style.top=cm.y+'px';
     div.textContent=cm.text;
@@ -1029,12 +1038,47 @@ function renderStickies(){
 }
 
 function editSticky(cm){
-  const text=prompt('コメントを編集',cm.text);
-  if(text===null)return;
-  snap();
-  if(text.trim()===''){comments=comments.filter(c=>c.id!==cm.id);}
-  else{cm.text=text.trim();}
-  renderStickies();
+  editStickyInline(cm);
+}
+
+// インライン編集: 付箋のdivをcontentEditableにして直接編集可能にする
+function editStickyInline(cm){
+  const wrap=document.getElementById('sticky-wrap');
+  const divs=wrap.querySelectorAll('.sticky');
+  // idで探す: renderStickiesで data-cm-id を付ける
+  let target=null;
+  divs.forEach(d=>{if(d.dataset.cmId==cm.id) target=d;});
+  if(!target){renderStickies(); return;}
+  target.contentEditable='true';
+  target.style.cursor='text';
+  target.style.outline='2px solid #e6a200';
+  target.focus();
+  // 既存テキストの末尾にカーソル
+  const range=document.createRange();
+  range.selectNodeContents(target);
+  range.collapse(false);
+  const s=window.getSelection();
+  s.removeAllRanges();s.addRange(range);
+
+  const finish=()=>{
+    target.contentEditable='false';
+    target.style.cursor='move';
+    target.style.outline='';
+    // 削除ボタンのテキストを除外してテキスト取得
+    const del=target.querySelector('.sticky-del');
+    const delText=del?del.textContent:'';
+    let text=target.textContent;
+    if(delText&&text.endsWith(delText)) text=text.slice(0,-delText.length);
+    text=text.trim();
+    snap();
+    if(text===''){comments=comments.filter(c=>c.id!==cm.id);}
+    else{cm.text=text;}
+    renderStickies();
+  };
+  target.addEventListener('blur',finish,{once:true});
+  target.addEventListener('keydown',ev=>{
+    if(ev.key==='Escape'||ev.key==='Enter'){ev.preventDefault();target.blur();}
+  });
 }
 
 // ════════════════════════════════════════════
@@ -1127,7 +1171,7 @@ function autoFileName(prefix,ext){
 // File System Access API対応: 毎回同じフォルダに保存
 let savedDirHandle=null; // フォルダハンドルを記憶
 
-async function smartSavePNG(prefix,canvas){
+async function smartSavePNG(prefix,canvas,pickerId){
   const blob=await new Promise(r=>canvas.toBlob(r,'image/png'));
   const fname=autoFileName(prefix,'png');
 
@@ -1135,7 +1179,7 @@ async function smartSavePNG(prefix,canvas){
   if(window.showSaveFilePicker){
     try{
       const handle=await window.showSaveFilePicker({
-        id:'genogram-save', // IDでフォルダを記憶
+        id:pickerId||'genogram-save', // IDでフォルダを記憶（タブ別）
         suggestedName:fname,
         types:[{description:'PNG画像',accept:{'image/png':['.png']}}]
       });
@@ -1281,8 +1325,8 @@ function fpSetTool(t){
 
   const msgs={
     sel:'✥ 移動・選択モード ─ 家具/部屋をドラッグで移動 | 選択後 右下⤡=リサイズ | 右上↻=回転 | ダブルクリック=名前変更 | Delete=削除',
-    line:'実線 — 始点クリック → 終点クリック | Escでキャンセル',
-    dash:'破線 — 始点クリック → 終点クリック | Escでキャンセル',
+    line:'実線 — ドラッグで始点→終点に線を引く',
+    dash:'破線 — ドラッグで始点→終点に線を引く',
     text:'💬 クリックした場所にコメント追加',
   };
   const def=ROOM_DEF[t];
@@ -1534,7 +1578,7 @@ function fpDown(e){
   if(fpTool.startsWith('sym-')){
     fpSnap_();
     const def=fpSymDef(fpTool);
-    const slbl={'sym-bed':'ベッド','sym-desk':'机','sym-door':'ドア','sym-door2':'引き戸','sym-win':'窓','sym-genkan':'框','sym-step':'段差'};
+    const slbl={'sym-bed':'ベッド','sym-desk':'机','sym-door':'ドア','sym-door2':'引き戸','sym-win':'窓','sym-genkan':'框','sym-step':'段差','sym-tri':'','sym-circle':''};
     let nx=sp.x-def.w/2, ny=sp.y-def.h/2, nrot=0;
     // 窓・引き戸・框は壁線上へスナップ（最寄りの部屋壁or線に吸着し、向きも合わせる）
     if(fpTool==='sym-win'||fpTool==='sym-door2'||fpTool==='sym-genkan'){
@@ -1554,20 +1598,11 @@ function fpDown(e){
     fpRender();return;
   }
 
-  // ── 線（2クリック） ──
+  // ── 線（ドラッグで描画） ──
   if(fpTool==='line'||fpTool==='dash'){
-    if(!fpLineDraw){fpLineDraw={x0:sp.x,y0:sp.y};fpSetSb('終点をタップ');}
-    else{
-      if(Math.hypot(sp.x-fpLineDraw.x0,sp.y-fpLineDraw.y0)>8){
-        fpSnap_();
-        const neo={id:fpNid++,type:fpTool,x1:fpLineDraw.x0,y1:fpLineDraw.y0,x2:sp.x,y2:sp.y};
-        fpLines.push(neo);
-        fpSel={kind:'line',ref:neo};
-      }
-      fpLineDraw=null;
-      fpSetTool('sel'); // 配置後は自動で選択モードへ
-      fpRender();
-    }return;
+    fpLineDraw={x0:sp.x,y0:sp.y,type:fpTool};
+    fpSetSb('ドラッグして線を引く — 離すと確定');
+    return;
   }
 
   // ── コメント ──
@@ -1580,6 +1615,19 @@ function fpDown(e){
 }
 
 function fpMove(e){
+  // 線のドラッグプレビュー
+  if(fpLineDraw){
+    const p=fpGp(e);const sp=fpSnapPos(p);
+    fpRender();
+    const prev=document.createElementNS('http://www.w3.org/2000/svg','line');
+    prev.setAttribute('x1',fpLineDraw.x0);prev.setAttribute('y1',fpLineDraw.y0);
+    prev.setAttribute('x2',sp.x);prev.setAttribute('y2',sp.y);
+    prev.setAttribute('stroke','#333');prev.setAttribute('stroke-width','2');
+    if(fpLineDraw.type==='dash') prev.setAttribute('stroke-dasharray','6 4');
+    prev.setAttribute('pointer-events','none');prev.setAttribute('opacity','0.5');
+    fpcv.appendChild(prev);
+    return;
+  }
   if(!fpDrag)return;
   const p=fpGp(e);const sp=fpSnapPos(p);
   if(fpDrag.kind==='room'){
@@ -1624,6 +1672,19 @@ function fpMove(e){
 }
 
 function fpUp(e){
+  // 線ドラッグ完了
+  if(fpLineDraw){
+    const p=fpGp(e);const sp=fpSnapPos(p);
+    if(Math.hypot(sp.x-fpLineDraw.x0,sp.y-fpLineDraw.y0)>8){
+      fpSnap_();
+      const neo={id:fpNid++,type:fpLineDraw.type,x1:fpLineDraw.x0,y1:fpLineDraw.y0,x2:sp.x,y2:sp.y};
+      fpLines.push(neo);
+      fpSel={kind:'line',ref:neo};
+    }
+    fpLineDraw=null;
+    fpSetTool('sel');
+    fpRender();return;
+  }
   if(!fpDrag)return;
   if(fpDrag.kind==='new-room'){
     const p=fpGp(e);const sp=fpSnapPos(p);
@@ -1739,6 +1800,8 @@ function fpSymDef(type){
     'sym-win'   :{w:80, h:8},   // 窓: 横長・薄い
     'sym-genkan':{w:80, h:10},  // 玄関框: 横長・薄い
     'sym-step'  :{w:20, h:16},
+    'sym-tri'   :{w:80, h:80},   // 三角形: 正三角に近い
+    'sym-circle':{w:40, h:40},   // 丸: 柱など
   };
   return defs[type]||{w:60,h:60};
 }
@@ -1841,6 +1904,20 @@ function fpRenderSym(s){
     <polygon points="${cx},${s.y} ${s.x},${s.y+s.h} ${s.x+s.w},${s.y+s.h}"
       fill="#f5c800" fill-opacity="0.92" stroke="#a08000" stroke-width="1.5"
       stroke-linejoin="round"/>`;
+
+  }else if(s.type==='sym-tri'){
+    // 三角形: 斜め壁や変形部屋に使用
+    inner=`
+    <polygon points="${cx},${s.y} ${s.x},${s.y+s.h} ${s.x+s.w},${s.y+s.h}"
+      fill="#f0f0f0" fill-opacity="0.6" stroke="#555" stroke-width="2"
+      stroke-linejoin="round"/>`;
+
+  }else if(s.type==='sym-circle'){
+    // 丸: 柱など
+    const rx=s.w/2, ry=s.h/2;
+    inner=`
+    <ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}"
+      fill="#f0f0f0" fill-opacity="0.6" stroke="#555" stroke-width="2"/>`;
   }
 
   // 選択ハンドル（リサイズ＋回転）
@@ -2094,7 +2171,7 @@ async function fpSavePNG(){
   if(!fpRooms.length&&!fpSyms.length&&!fpLines.length&&!fpTexts.length){alert('まだ何も配置されていません');return;}
   try{
     const{canvas}=await fpRenderToCanvas(2);
-    await smartSavePNG('住宅見取り図',canvas);
+    await smartSavePNG('住宅見取り図',canvas,'mitorizu-save');
   }catch(e){alert('PNG保存失敗: '+e.message);}
 }
 async function fpSavePDF(){
