@@ -997,7 +997,12 @@ function renderStickies(){
     div.dataset.cmId=cm.id;
     div.style.left=cm.x+'px';
     div.style.top=cm.y+'px';
-    div.textContent=cm.text;
+
+    // テキスト部分をspanで分離（インライン編集用）
+    const span=document.createElement('span');
+    span.className='sticky-text';
+    span.textContent=cm.text;
+    div.appendChild(span);
 
     // 削除ボタン
     const del=document.createElement('button');
@@ -1009,10 +1014,10 @@ function renderStickies(){
 
     // ダブルタップ/ダブルクリックで編集
     let lastTap=0;
-    div.addEventListener('dblclick',ev=>{ev.stopPropagation();editSticky(cm);});
+    div.addEventListener('dblclick',ev=>{ev.stopPropagation();editStickyInline(cm);});
     div.addEventListener('touchend',ev=>{
       const now=Date.now();
-      if(now-lastTap<350&&!stickyDrag){ev.stopPropagation();ev.preventDefault();editSticky(cm);}
+      if(now-lastTap<350&&!stickyDrag){ev.stopPropagation();ev.preventDefault();editStickyInline(cm);}
       lastTap=now;
     },{passive:false});
 
@@ -1026,7 +1031,6 @@ function renderStickies(){
     });
     div.addEventListener('touchstart',ev=>{
       ev.stopPropagation();
-      // ダブルタップ判定のためにpreventDefaultしない（touchendで判定）
       const t=ev.touches[0];
       const r=document.getElementById('cwrap').getBoundingClientRect();
       stickyDrag={cm,div,ox:t.clientX-r.left-cm.x,oy:t.clientY-r.top-cm.y};
@@ -1037,47 +1041,41 @@ function renderStickies(){
   });
 }
 
-function editSticky(cm){
-  editStickyInline(cm);
-}
-
-// インライン編集: 付箋のdivをcontentEditableにして直接編集可能にする
+// インライン編集: テキスト用spanをcontentEditableにして直接入力
 function editStickyInline(cm){
   const wrap=document.getElementById('sticky-wrap');
-  const divs=wrap.querySelectorAll('.sticky');
-  // idで探す: renderStickiesで data-cm-id を付ける
-  let target=null;
-  divs.forEach(d=>{if(d.dataset.cmId==cm.id) target=d;});
-  if(!target){renderStickies(); return;}
-  target.contentEditable='true';
-  target.style.cursor='text';
-  target.style.outline='2px solid #e6a200';
-  target.focus();
-  // 既存テキストの末尾にカーソル
+  const div=wrap.querySelector(`.sticky[data-cm-id="${cm.id}"]`);
+  if(!div) return;
+  const span=div.querySelector('.sticky-text');
+  if(!span) return;
+
+  span.contentEditable='true';
+  span.style.cursor='text';
+  span.style.minWidth='60px';
+  span.style.display='inline-block';
+  div.style.outline='2px solid #e6a200';
+  span.focus();
+
+  // 末尾にカーソル
   const range=document.createRange();
-  range.selectNodeContents(target);
+  range.selectNodeContents(span);
   range.collapse(false);
   const s=window.getSelection();
   s.removeAllRanges();s.addRange(range);
 
+  let done=false;
   const finish=()=>{
-    target.contentEditable='false';
-    target.style.cursor='move';
-    target.style.outline='';
-    // 削除ボタンのテキストを除外してテキスト取得
-    const del=target.querySelector('.sticky-del');
-    const delText=del?del.textContent:'';
-    let text=target.textContent;
-    if(delText&&text.endsWith(delText)) text=text.slice(0,-delText.length);
-    text=text.trim();
+    if(done) return; done=true;
+    const text=span.textContent.trim();
     snap();
     if(text===''){comments=comments.filter(c=>c.id!==cm.id);}
     else{cm.text=text;}
     renderStickies();
   };
-  target.addEventListener('blur',finish,{once:true});
-  target.addEventListener('keydown',ev=>{
-    if(ev.key==='Escape'||ev.key==='Enter'){ev.preventDefault();target.blur();}
+  span.addEventListener('blur',finish,{once:true});
+  span.addEventListener('keydown',ev=>{
+    if(ev.key==='Enter'&&!ev.shiftKey){ev.preventDefault();span.blur();}
+    if(ev.key==='Escape'){ev.preventDefault();span.blur();}
   });
 }
 
@@ -1605,11 +1603,14 @@ function fpDown(e){
     return;
   }
 
-  // ── コメント ──
+  // ── コメント（付箋を配置し即インライン編集） ──
   if(fpTool==='text'){
-    const text=prompt('コメントを入力','');
-    if(text&&text.trim()){fpSnap_();fpTexts.push({id:fpNid++,x:p.x,y:p.y,text:text.trim()});fpRenderStickies();}
-    fpSetTool('sel'); // 配置後は自動で選択モードへ
+    fpSnap_();
+    const cm={id:fpNid++,x:p.x,y:p.y,text:''};
+    fpTexts.push(cm);
+    fpRenderStickies();
+    fpSetTool('sel');
+    setTimeout(()=>fpEditStickyInline(cm),50);
     return;
   }
 }
@@ -2082,25 +2083,63 @@ function fpRenderStickies(){
   fpTexts.forEach(cm=>{
     const div=document.createElement('div');
     div.className='sticky';
+    div.dataset.cmId=cm.id;
     div.style.left=cm.x+'px';div.style.top=cm.y+'px';
-    div.textContent=cm.text;
+
+    const span=document.createElement('span');
+    span.className='sticky-text';
+    span.textContent=cm.text;
+    div.appendChild(span);
+
     const del=document.createElement('button');
     del.className='sticky-del';del.textContent='✕';
     const onDel=ev=>{ev.stopPropagation();ev.preventDefault();fpSnap_();fpTexts=fpTexts.filter(t=>t.id!==cm.id);fpRenderStickies();};
     del.addEventListener('click',onDel);del.addEventListener('touchstart',onDel,{passive:false});
     div.appendChild(del);
+
     let lastTap=0;
-    div.addEventListener('dblclick',ev=>{ev.stopPropagation();fpEditSticky(cm);});
-    div.addEventListener('touchend',ev=>{const now=Date.now();if(now-lastTap<350&&!fpStickyDrag){ev.stopPropagation();ev.preventDefault();fpEditSticky(cm);}lastTap=now;},{passive:false});
+    div.addEventListener('dblclick',ev=>{ev.stopPropagation();fpEditStickyInline(cm);});
+    div.addEventListener('touchend',ev=>{const now=Date.now();if(now-lastTap<350&&!fpStickyDrag){ev.stopPropagation();ev.preventDefault();fpEditStickyInline(cm);}lastTap=now;},{passive:false});
     div.addEventListener('mousedown',ev=>{if(ev.button!==0)return;ev.stopPropagation();const r=document.getElementById('fp-wrap').getBoundingClientRect();fpStickyDrag={cm,div,ox:ev.clientX-r.left-cm.x,oy:ev.clientY-r.top-cm.y};});
     div.addEventListener('touchstart',ev=>{ev.stopPropagation();const t=ev.touches[0];const r=document.getElementById('fp-wrap').getBoundingClientRect();fpStickyDrag={cm,div,ox:t.clientX-r.left-cm.x,oy:t.clientY-r.top-cm.y};},{passive:true});
     wrap.appendChild(div);
   });
 }
-function fpEditSticky(cm){
-  const t=prompt('コメントを編集',cm.text);if(t===null)return;
-  fpSnap_();if(t.trim()==='')fpTexts=fpTexts.filter(x=>x.id!==cm.id);else cm.text=t.trim();
-  fpRenderStickies();
+
+function fpEditStickyInline(cm){
+  const wrap=document.getElementById('fp-sticky-wrap');
+  const div=wrap.querySelector(`.sticky[data-cm-id="${cm.id}"]`);
+  if(!div) return;
+  const span=div.querySelector('.sticky-text');
+  if(!span) return;
+
+  span.contentEditable='true';
+  span.style.cursor='text';
+  span.style.minWidth='60px';
+  span.style.display='inline-block';
+  div.style.outline='2px solid #e6a200';
+  span.focus();
+
+  const range=document.createRange();
+  range.selectNodeContents(span);
+  range.collapse(false);
+  const s=window.getSelection();
+  s.removeAllRanges();s.addRange(range);
+
+  let done=false;
+  const finish=()=>{
+    if(done) return; done=true;
+    const text=span.textContent.trim();
+    fpSnap_();
+    if(text===''){fpTexts=fpTexts.filter(t=>t.id!==cm.id);}
+    else{cm.text=text;}
+    fpRenderStickies();
+  };
+  span.addEventListener('blur',finish,{once:true});
+  span.addEventListener('keydown',ev=>{
+    if(ev.key==='Enter'&&!ev.shiftKey){ev.preventDefault();span.blur();}
+    if(ev.key==='Escape'){ev.preventDefault();span.blur();}
+  });
 }
 
 // ── 見取り図PNG/PDF保存 ──
